@@ -1,0 +1,60 @@
+---
+title: "Extended Data Fig 5"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+```
+
+# Extended Data Fig 5
+Goal here is to be able to show the effects of the inhibitors that have
+```{r}
+drugs <- c("Uninhibited_Untreated", "CHIR99021","NVP-BEZ235", "PD 0325901", 
+           "PKC 412", "Torin 1")
+```
+
+```{r}
+plotUMAP <- function(cell_line){
+  seurat <- readRDS(paste0("../data/", cell_line, "_Kinase_Untreated.rds"))
+  cells_keep <- colnames(seurat)[seurat$Drug %in% drugs]
+  seurat <- subset(seurat, cells=cells_keep)
+  seurat <- FindVariableFeatures(seurat, selection.method = "vst",
+                               nfeatures=2000)
+  seurat <- ScaleData(seurat, features=VariableFeatures(seurat),
+                    vars.to.regress=c("nCount_RNA", "percent.mito",
+                                      "S.Score", "G2M.Score"))
+  seurat <- RunPCA(seurat, verbose=F)
+  seurat <- RunUMAP(seurat, dims=1:30)
+  
+  data <- seurat@meta.data
+  data$UMAP1 <- Embeddings(seurat, "umap")[,1]
+  data$UMAP2 <- Embeddings(seurat, "umap")[,2]
+  data$Drug <- factor(data$Drug, levels=drugs)
+  
+  data_control <- filter(data, Drug=="Uninhibited_Untreated")
+  data_treated <- filter(data, Drug!="Uninhibited_Untreated")
+  umap <- ggplot(data, aes(x=UMAP1, y=UMAP2)) +
+    geom_point(data=data_control, size=0.5, color="lightgrey") +
+    geom_point(data=data_treated, size=0.5, aes(color=Drug)) +
+    theme_void()
+  
+  ggsave(umap, filename=paste0("../figure_panels/ExtendedDataFig_5/UMAP_", cell_line, "_Untreated.png"),
+       width=4, height=2.75)
+  umap
+}
+```
+
+```{r}
+plotUMAP("A549")
+plotUMAP("DU145")
+plotUMAP("MCF7")
+plotUMAP("OVCA420")
+```
+
+# Session info
+```{r}
+sessionInfo()
+```
+

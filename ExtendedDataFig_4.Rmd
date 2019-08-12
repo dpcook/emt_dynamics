@@ -1,0 +1,365 @@
+---
+title: "Extended Data Figure 4"
+output: html_notebook
+---
+
+# Dependencies
+```{r}
+library(Seurat)
+library(pheatmap)
+library(fgsea)
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+library(RColorBrewer)
+```
+
+# Load the data
+```{r}
+a549_egf <- readRDS("../data/A549_EGF.rds")
+a549_tnf <- readRDS("../data/A549_TNF.rds")
+a549_tgfb1 <- readRDS("../data/A549_TGFB1.rds")
+
+du145_egf <- readRDS("../data/DU145_EGF.rds")
+du145_tnf <- readRDS("../data/DU145_TNF.rds")
+du145_tgfb1 <- readRDS("../data/DU145_TGFB1.rds")
+
+mcf7_egf <- readRDS("../data/MCF7_EGF.rds")
+mcf7_tnf <- readRDS("../data/MCF7_TNF.rds")
+mcf7_tgfb1 <- readRDS("../data/MCF7_TGFB1.rds")
+
+ovca420_egf <- readRDS("../data/OVCA420_EGF.rds")
+ovca420_tnf <- readRDS("../data/OVCA420_TNF.rds")
+ovca420_tgfb1 <- readRDS("../data/OVCA420_TGFB1.rds")
+```
+
+
+# Extended Data Figure 4a
+## Heatmap of hallmarks
+```{r}
+a549_tgfb1_gam <- read.csv("../output/pseudotime/a549_tgfb1_dge.csv", row.names = 1)
+a549_egf_gam <- read.csv("../output/pseudotime/a549_egf_dge.csv", row.names=1)
+a549_tnf_gam <- read.csv("../output/pseudotime/a549_tnf_dge.csv", row.names=1)
+
+du145_tgfb1_gam <- read.csv("../output/pseudotime/du145_tgfb1_dge.csv", row.names=1)
+du145_egf_gam <- read.csv("../output/pseudotime/du145_egf_dge.csv", row.names=1)
+du145_tnf_gam <- read.csv("../output/pseudotime/du145_tnf_dge.csv", row.names=1)
+
+mcf7_tgfb1_gam <- read.csv("../output/pseudotime/mcf7_tgfb1_dge.csv", row.names=1)
+mcf7_egf_gam <- read.csv("../output/pseudotime/mcf7_egf_dge.csv", row.names=1)
+mcf7_tnf_gam <- read.csv("../output/pseudotime/mcf7_tnf_dge.csv", row.names=1)
+
+ovca420_tgfb1_gam <- read.csv("../output/pseudotime/ovca420_tgfb1_dge.csv", row.names=1)
+ovca420_egf_gam <- read.csv("../output/pseudotime/ovca420_egf_dge.csv", row.names=1)
+ovca420_tnf_gam <- read.csv("../output/pseudotime/ovca420_tnf_dge.csv", row.names=1)
+```
+
+Get sig genes
+```{r}
+a549_tgfb1_sig <- rownames(a549_tgfb1_gam)[which(a549_tgfb1_gam$fdr <= 0.05)]
+a549_egf_sig <- rownames(a549_egf_gam)[which(a549_egf_gam$fdr <= 0.05)]
+a549_tnf_sig <- rownames(a549_tnf_gam)[which(a549_tnf_gam$fdr <= 0.05)]
+
+du145_tgfb1_sig <- rownames(du145_tgfb1_gam)[which(du145_tgfb1_gam$fdr <= 0.05)]
+du145_egf_sig <- rownames(du145_egf_gam)[which(du145_egf_gam$fdr <= 0.05)]
+du145_tnf_sig <- rownames(du145_tnf_gam)[which(du145_tnf_gam$fdr <= 0.05)]
+
+mcf7_tgfb1_sig <- rownames(mcf7_tgfb1_gam)[which(mcf7_tgfb1_gam$fdr <= 0.05)]
+mcf7_egf_sig <- rownames(mcf7_egf_gam)[which(mcf7_egf_gam$fdr <= 0.05)]
+mcf7_tnf_sig <- rownames(mcf7_tnf_gam)[which(mcf7_tnf_gam$fdr <= 0.05)]
+
+ovca420_tgfb1_sig <- rownames(ovca420_tgfb1_gam)[which(ovca420_tgfb1_gam$fdr <= 0.05)]
+ovca420_egf_sig <- rownames(ovca420_egf_gam)[which(ovca420_egf_gam$fdr <= 0.05)]
+ovca420_tnf_sig <- rownames(ovca420_tnf_gam)[which(ovca420_tnf_gam$fdr <= 0.05)]
+```
+
+Many genes are significant with very modest effect sizes. To try to make it a little more manageable, we'll filter for only genes that are also in the top 2k variable genes
+
+```{r}
+#Make a function so we can tweak the number of genes
+getVarGenes <- function(seurat_object, n){
+  var_table <- seurat_object[["RNA"]]@meta.features
+  var_genes <- rownames(var_table[order(desc(var_table$vst.variance.standardized)),])[1:n]
+}
+```
+
+```{r}
+a549_tgfb1_sig <- a549_tgfb1_sig[which(a549_tgfb1_sig %in% getVarGenes(a549_tgfb1, 2000))]
+a549_egf_sig <- a549_egf_sig[which(a549_egf_sig %in% getVarGenes(a549_egf, 2000))]
+a549_tnf_sig <- a549_tnf_sig[which(a549_tnf_sig %in% getVarGenes(a549_tnf, 2000))]
+
+du145_tgfb1_sig <- du145_tgfb1_sig[which(du145_tgfb1_sig %in% getVarGenes(du145_tgfb1, 2000))]
+du145_egf_sig <- du145_egf_sig[which(du145_egf_sig %in% getVarGenes(du145_egf, 2000))]
+du145_tnf_sig <- du145_tnf_sig[which(du145_tnf_sig %in% getVarGenes(du145_tnf, 2000))]
+
+mcf7_tgfb1_sig <- mcf7_tgfb1_sig[which(mcf7_tgfb1_sig %in% getVarGenes(mcf7_tgfb1, 2000))]
+mcf7_egf_sig <- mcf7_egf_sig[which(mcf7_egf_sig %in% getVarGenes(mcf7_egf, 2000))]
+mcf7_tnf_sig <- mcf7_tnf_sig[which(mcf7_tnf_sig %in% getVarGenes(mcf7_tnf, 2000))]
+
+ovca420_tgfb1_sig <- ovca420_tgfb1_sig[which(ovca420_tgfb1_sig %in% getVarGenes(ovca420_tgfb1, 2000))]
+ovca420_egf_sig <- ovca420_egf_sig[which(ovca420_egf_sig %in% getVarGenes(ovca420_egf, 2000))]
+ovca420_tnf_sig <- ovca420_tnf_sig[which(ovca420_tnf_sig %in% getVarGenes(ovca420_tnf, 2000))]
+```
+
+```{r}
+dge_list <- data.frame(Gene = unique(c(a549_tgfb1_sig,
+                                       a549_egf_sig,
+                                       a549_tnf_sig,
+                                       du145_tgfb1_sig,
+                                       du145_egf_sig,
+                                       du145_tnf_sig,
+                                       mcf7_tgfb1_sig,
+                                       mcf7_egf_sig,
+                                       mcf7_tnf_sig,
+                                       ovca420_tgfb1_sig,
+                                       ovca420_egf_sig,
+                                       ovca420_tnf_sig)))
+  
+dge_list$A549_EGF <- dge_list$Gene %in% a549_egf_sig
+dge_list$A549_TGFB1 <- dge_list$Gene %in% a549_tgfb1_sig
+dge_list$A549_TNF <- dge_list$Gene %in% a549_tnf_sig
+
+dge_list$DU145_EGF <- dge_list$Gene %in% du145_egf_sig
+dge_list$DU145_TGFB1 <- dge_list$Gene %in% du145_tgfb1_sig
+dge_list$DU145_TNF <- dge_list$Gene %in% du145_tnf_sig
+
+dge_list$MCF7_EGF <- dge_list$Gene %in% mcf7_egf_sig
+dge_list$MCF7_TGFB1 <- dge_list$Gene %in% mcf7_tgfb1_sig
+dge_list$MCF7_TNF <- dge_list$Gene %in% mcf7_tnf_sig
+
+dge_list$OVCA420_EGF <- dge_list$Gene %in% ovca420_egf_sig
+dge_list$OVCA420_TGFB1 <- dge_list$Gene %in% ovca420_tgfb1_sig
+dge_list$OVCA420_TNF <- dge_list$Gene %in% ovca420_tnf_sig
+
+#Convert TRUE/FALSE to 1/0
+dge_list[,2:ncol(dge_list)] <- lapply(dge_list[,2:ncol(dge_list)], as.numeric)
+```
+
+```{r}
+library(fgsea)
+hallmarks <- fgsea::gmtPathways("~/Data/GeneLists/hallmark.genesets.v6.1.symbols.gmt")
+emt_genes <- hallmarks[["HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION"]]
+```
+
+```{r}
+counts <- dge_list[,2:ncol(dge_list)]
+rownames(counts) <- dge_list$Gene
+counts <- counts[emt_genes[which(emt_genes %in% rownames(counts))],]
+```
+
+```{r}
+count_heatmap <- pheatmap(t(counts),
+                          color = c("grey95", "red3"),
+                          border_color="black",
+                          cluster_cols=T,
+                          cluster_rows=F,
+                          show_rownames=F,
+                          show_colnames=T,
+                          legend=F,
+                          clustering_method="ward.D2",
+                          file="../figure_panels/ExtendedDataFig_4/EMT_Hallmarks_DEG_Heatmap.png",
+                          width=20, height=4.65)
+```
+
+
+# Extended Data Figure 4b
+## GSEA plots
+```{r}
+conserved_genes <- read.csv("../output/conserved_upregulated_genes.csv", row.names=1)
+conserved_genes <- as.character(conserved_genes$x)
+```
+
+
+```{r}
+getVars <- function(sample_id){
+  seurat_subset <- subset(epithelial, idents=sample_id)
+  seurat_subset <- CreateSeuratObject(seurat_subset[["RNA"]]@counts,
+                                      min.cells=round(0.001*ncol(seurat_subset)),
+                                      meta.data = seurat_subset@meta.data)
+  seurat_subset <- NormalizeData(seurat_subset)
+  seurat_subset <- FindVariableFeatures(seurat_subset, selection.method = "vst",
+                                        nfeatures=1000)
+  var_table <- seurat_subset[["RNA"]]@meta.features
+  var_table$Gene <- rownames(var_table)
+  var_table <- arrange(var_table, desc(vst.variance.standardized))
+  var <- var_table$vst.variance.standardized
+  names(var) <- var_table$Gene
+  gsea_plot <- fgsea::plotEnrichment(conserved_genes, var) +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.line = element_line(size=0.5),
+          axis.ticks = element_blank())
+  ggsave(gsea_plot, filename = paste0("../figure_panels/ExtendedDataFig_4/", sample_id, "_ConservedGeneSet_GSEA.pdf"),
+         width=1.75, height=1.5)
+  gsea_plot
+}
+```
+
+### Lung Tumours
+```{r}
+seurat <- readRDS("~/Data/2018-lung-cancer/output/lung_cancer.rds")
+epithelial <- subset(seurat, idents=1)
+Idents(epithelial) <- epithelial$orig.ident
+```
+
+```{r}
+Sample3b <- getVars("Sample3b")
+Sample3c <- getVars("Sample3c")
+Sample4a <- getVars("Sample4a")
+Sample4b <- getVars("Sample4b")
+Sample4c <- getVars("Sample4c")
+Sample4d <- getVars("Sample4d")
+Sample5a <- getVars("Sample5a")
+Sample5b <- getVars("Sample5b")
+Sample5d <- getVars("Sample5d")
+```
+
+### Syngeneic tumours
+```{r}
+getVars <- function(sample_id){
+  seurat_subset <- subset(seurat, idents=sample_id)
+  seurat_subset <- CreateSeuratObject(seurat_subset[["RNA"]]@counts,
+                                      min.cells=round(0.001*ncol(seurat_subset)),
+                                      meta.data = seurat_subset@meta.data)
+  seurat_subset <- NormalizeData(seurat_subset)
+  seurat_subset <- FindVariableFeatures(seurat_subset, selection.method = "vst",
+                                        nfeatures=1000)
+  var_table <- seurat_subset[["RNA"]]@meta.features
+  var_table$Gene <- toupper(rownames(var_table))
+  var_table <- arrange(var_table, desc(vst.variance.standardized))
+  var <- var_table$vst.variance.standardized
+  names(var) <- var_table$Gene
+  gsea_plot <- fgsea::plotEnrichment(conserved_genes, var) +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.line = element_line(size=0.5),
+          axis.ticks = element_blank())
+  ggsave(gsea_plot, filename = paste0("../figure_panels/ExtendedDataFig_4/", sample_id, "_ConservedGeneSet_GSEA.pdf"),
+         width=1.75, height=1.5)
+  gsea_plot
+}
+```
+
+```{r}
+syngeneic_seurat <- readRDS("~/Data/2019-syngeneic-tumours/output/syngeneic_tumors.rds")
+syngeneic_subset <- subset(syngeneic_seurat, idents = c(0,2))
+Idents(syngeneic_subset) <- syngeneic_subset$model
+seurat <- syngeneic_subset
+```
+
+```{r}
+B16 <- getVars("B16")
+CT26 <- getVars("CT26")
+EMT6 <- getVars("EMT6")
+LL2 <- getVars("LL2")
+MC38 <- getVars("MC38")
+SA1N <- getVars("SA1N")
+```
+
+### Tabula Muris Data
+```{r}
+seurat <- readRDS("~/Projects/tabula_muris_analysis/output/tabula_muris.rds")
+```
+
+```{r}
+Idents(seurat) <- seurat$cell_ontology_class
+```
+
+```{r}
+bladder_epithelium <- getVars("bladder cell")
+bladder_basal <- getVars("basal cell of urothelium")
+lung_mesothelial <- getVars("mesothelial cell")
+mammary_basal <- getVars("basal cell")
+tongue_basal <- getVars("basal cell of epidermis")
+trachea_epithelial <- getVars("epithelial cell")
+trachea_basal <- getVars("basal cell of epithelium of trachea")
+```
+
+# Extended Data Fig 4c
+## Correlation of conserved genes
+```{r}
+getCor <- function(seurat_object){
+  exp <- as.matrix(seurat_object[["RNA"]]@data)
+  rownames(exp) <- toupper(rownames(exp))
+  genes_keep <- up_genes[which(up_genes %in% rownames(exp))]
+  score_cor <- mean(cor(exp[genes_keep,], method="spearman"))
+}
+```
+
+Get seurat objects for datasets
+Tumors
+```{r}
+Sample3b <- subset(epithelial, idents = "Sample3b")
+Sample3c <- subset(epithelial, idents = "Sample3c")
+Sample4a <- subset(epithelial, idents = "Sample4a")
+Sample4b <- subset(epithelial, idents = "Sample4b")
+Sample4c <- subset(epithelial, idents = "Sample4c")
+Sample5a <- subset(epithelial, idents = "Sample5a")
+Sample5b <- subset(epithelial, idents = "Sample5b")
+Sample5d <- subset(epithelial, idents = "Sample5d")
+```
+
+Syngeneic Models
+```{r}
+B16 <- subset(syngeneic_subset, idents = "B16")
+CT26 <- subset(syngeneic_subset, idents = "CT26")
+EMT6 <- subset(syngeneic_subset, idents = "EMT6")
+LL2 <- subset(syngeneic_subset, idents = "LL2")
+MC38 <- subset(syngeneic_subset, idents = "MC38")
+SA1N <- subset(syngeneic_subset, idents = "SA1N")
+```
+
+Tabula
+```{r}
+bladder_epithelium <- subset(seurat, idents="bladder cell")
+bladder_basal <- subset(seurat, idents="basal cell of urothelium")
+lung_mesothelial <- subset(seurat, idents="mesothelial cell")
+mammary_basal <- subset(seurat, idents="basal cell")
+tongue_basal <- subset(seurat, idents="basal cell of epidermis")
+trachea_epithelial <- subset(seurat, idents="epithelial cell")
+trachea_basal <- subset(seurat, idents="basal cell of epithelium of trachea")
+```
+
+```{r}
+seurat_list <- list(a549_tgfb1, a549_egf, a549_tnf, du145_tgfb1, du145_egf, du145_tnf,
+                 mcf7_tgfb1, mcf7_egf, mcf7_tnf, ovca420_tgfb1, ovca420_egf, ovca420_tnf,
+                 Sample3b, Sample3c, Sample4a, Sample4b, Sample4c, Sample5a, Sample5b, Sample5d,
+                 B16, CT26, EMT6, LL2, MC38, SA1N, bladder_epithelium, bladder_basal,
+                 lung_mesothelial, mammary_basal, tongue_basal, trachea_epithelial,
+                 trachea_basal)
+```
+
+```{r}
+correlations <- lapply(seurat_list, getCor)
+correlations <- do.call(rbind, correlations)
+correlations <- as.matrix(correlations)
+rownames(correlations) <- c("EMT_A549_TGFB1", "EMT_A549_EGF", "EMT_A549_TNF",
+                            "EMT_DU145_TGFB1", "EMT_DU145_EGF", "EMT_DU145_TNF",
+                            "EMT_MCF7_TGFB1", "EMT_MCF7_EGF", "EMT_MCF7_TNF",
+                            "EMT_OVCA420_TGFB1", "EMT_OVCA420_EGF", "EMT_OVCA420_TNF",
+                            "LungTumour_3b", "LungTumour_3c", "LungTumour_4a", "LungTumour_4b",
+                            "LungTumour_4c", "LungTumour_5a", "LungTumour_5b", "LungTumour_5d",
+                            "MouseTumour_B16", "MouseTumour_CT26", "MouseTumour_EMT6",
+                            "MouseTumour_LL2", "MouseTumour_MC38", "MouseTumour_SA1N",
+                            "MouseTissue_BladderEpithelium", "MouseTissue_BladderBasal", 
+                            "MouseTissue_LungMesothelial", "MouseTissue_MammaryBasal",
+                            "MouseTissue_TongueBasal", "MouseTissue_TracheaEpithelium",
+                            "MouseTissue_TracheaBasal")
+```
+
+```{r}
+color_hack <- round((min(correlations) * 100) +100) #makes it so that the RdBu palette goes from -1 to 1, but we only plot the relevant range 
+correlation_heatmap <- pheatmap(correlations,
+                                color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(200)[color_hack:200],
+                                legend=F,
+                                border_color="black",
+                                cluster_cols=F,
+                                cluster_rows=F,
+                                show_rownames=T,
+                                show_colnames=F,
+                                display_numbers = T,
+                                number_color = "grey15",
+                                filename = "../figure_panels/ExtendedDataFig_4/Heatmap_EMT_UP_correlation.png",
+                                width=2.65, height=8.25)
+```
+
