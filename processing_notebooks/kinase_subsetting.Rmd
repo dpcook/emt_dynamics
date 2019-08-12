@@ -1,0 +1,186 @@
+---
+title: "Kinase Inhibitor Screen - Subsetting"
+output: html_notebook
+---
+
+# Goals
+1) Simply subset each plate by treatment
+
+2) Integrate with timecourse data to map on top of it
+
+# Dependencies
+```{r}
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(viridis)
+library(matrixStats)
+```
+
+# Load the data
+```{r}
+a549_kinase <- readRDS("../data/A549_kinase.rds")
+du145_kinase <- readRDS("../data/DU145_kinase.rds")
+mcf7_kinase <- readRDS("../data/MCF7_kinase.rds")
+ovca420_kinase <- readRDS("../data/OVCA420_kinase.rds")
+```
+
+# Quick visualization
+
+```{r}
+DimPlot(a549_kinase, group.by="Treatment", split.by="Drug", label=T)
+DimPlot(du145_kinase, group.by="Treatment", split.by="Drug", label=T)
+DimPlot(mcf7_kinase, group.by="Treatment", split.by="Drug", label=T)
+DimPlot(ovca420_kinase, group.by="Treatment", split.by="Drug", label=T)
+```
+
+# 1) Subset by cell line + EMT inducer combination
+We will always keep the untreated + no KI as reference
+```{r}
+subsetKinase <- function(seurat_object, emt_inducer){
+  print("Subsetting seurat object")
+  cells_keep <- colnames(seurat_object)[which(seurat_object$Treatment == emt_inducer)]
+  cells_keep <- c(cells_keep, colnames(seurat_object)[which(seurat_object$ConditionBroad == "Untreated_Uninhibited")])
+  seurat_subset <- subset(seurat_object, cells=unique(cells_keep))
+  
+  # Fixing one thing in the meta data
+  # Makes it so I can distinguish EMT-treated "Control" vs. untreated "control"
+  seurat_subset$Drug[which(seurat_subset$ConditionBroad == paste0(emt_inducer, "_Uninhibited"))] <- paste0("Uninhibited_", emt_inducer)
+  seurat_subset$Drug[which(seurat_subset$ConditionBroad == "Untreated_Uninhibited")] <- "Uninhibited_Untreated"
+  seurat_subset$Target[which(seurat_subset$ConditionBroad == paste0(emt_inducer, "_Uninhibited"))] <- paste0("Uninhibited_", emt_inducer)
+  seurat_subset$Target[which(seurat_subset$ConditionBroad == "Untreated_Uninhibited")] <- "Uninhibited_Untreated"
+  
+  print("Re-normalizing")
+  seurat_subset <- CellCycleScoring(seurat_subset, s.features = cc.genes$s.genes, 
+                                    g2m.features = cc.genes$g2m.genes, 
+                                    set.ident = FALSE)
+  seurat_subset <- FindVariableFeatures(seurat_subset, selection.method = "vst",
+                                        nfeatures=2000)
+  seurat_subset <- ScaleData(seurat_subset, features=VariableFeatures(seurat_subset),
+                             vars.to.regress=c("percent.mito", "nCount_RNA",
+                                               "S.Score", "G2M.Score"))
+  
+  print("Re-running dimensionality reduction")
+  seurat_subset <- RunPCA(seurat_subset, verbose=F)
+  seurat_subset <- RunUMAP(seurat_subset, dims=1:30)
+  
+  print("Clustering")
+  seurat_subset <- FindNeighbors(seurat_subset, dims=1:30)
+  seurat_subset <- FindClusters(seurat_subset, resolution=0.25)
+}
+```
+
+```{r}
+a549_untreated_kinase <- subsetKinase(a549_kinase, "Untreated")
+a549_tgfb1_kinase <- subsetKinase(a549_kinase, "TGFB1")
+a549_egf_kinase <- subsetKinase(a549_kinase, "EGF")
+a549_tnf_kinase <- subsetKinase(a549_kinase, "TNF")
+
+du145_untreated_kinase <- subsetKinase(du145_kinase, "Untreated")
+du145_tgfb1_kinase <- subsetKinase(du145_kinase, "TGFB1")
+du145_egf_kinase <- subsetKinase(du145_kinase, "EGF")
+du145_tnf_kinase <- subsetKinase(du145_kinase, "TNF")
+
+mcf7_untreated_kinase <- subsetKinase(mcf7_kinase, "Untreated")
+mcf7_tgfb1_kinase <- subsetKinase(mcf7_kinase, "TGFB1")
+mcf7_egf_kinase <- subsetKinase(mcf7_kinase, "EGF")
+mcf7_tnf_kinase <- subsetKinase(mcf7_kinase, "TNF")
+
+ovca420_untreated_kinase <- subsetKinase(ovca420_kinase, "Untreated")
+ovca420_tgfb1_kinase <- subsetKinase(ovca420_kinase, "TGFB1")
+ovca420_egf_kinase <- subsetKinase(ovca420_kinase, "EGF")
+ovca420_tnf_kinase <- subsetKinase(ovca420_kinase, "TNF")
+```
+
+## Visualization
+```{r}
+DimPlot(a549_untreated_kinase, group.by="Drug", label=T)
+DimPlot(a549_untreated_kinase, group.by="ConditionBroad", label=T)
+DimPlot(a549_tgfb1_kinase, group.by="Drug", label=T)
+DimPlot(a549_tgfb1_kinase, group.by="ConditionBroad", label=T)
+DimPlot(a549_egf_kinase, group.by="Drug", label=T)
+DimPlot(a549_egf_kinase, group.by="ConditionBroad", label=T)
+DimPlot(a549_tnf_kinase, group.by="Drug", label=T)
+DimPlot(a549_tnf_kinase, group.by="ConditionBroad", label=T)
+```
+
+```{r}
+DimPlot(du145_untreated_kinase, group.by="Drug", label=T)
+DimPlot(du145_untreated_kinase, group.by="ConditionBroad", label=T)
+DimPlot(du145_tgfb1_kinase, group.by="Drug", label=T)
+DimPlot(du145_tgfb1_kinase, group.by="ConditionBroad", label=T)
+DimPlot(du145_egf_kinase, group.by="Drug", label=T)
+DimPlot(du145_egf_kinase, group.by="ConditionBroad", label=T)
+DimPlot(du145_tnf_kinase, group.by="Drug", label=T)
+DimPlot(du145_tnf_kinase, group.by="ConditionBroad", label=T)
+```
+
+```{r}
+DimPlot(mcf7_untreated_kinase, group.by="Drug", label=T)
+DimPlot(mcf7_untreated_kinase, group.by="ConditionBroad", label=T)
+DimPlot(mcf7_tgfb1_kinase, group.by="Drug", label=T)
+DimPlot(mcf7_tgfb1_kinase, group.by="ConditionBroad", label=T)
+DimPlot(mcf7_egf_kinase, group.by="Drug", label=T)
+DimPlot(mcf7_egf_kinase, group.by="ConditionBroad", label=T)
+DimPlot(mcf7_tnf_kinase, group.by="Drug", label=T)
+DimPlot(mcf7_tnf_kinase, group.by="ConditionBroad", label=T)
+```
+
+```{r}
+DimPlot(ovca420_untreated_kinase, group.by="Drug", label=T)
+DimPlot(ovca420_untreated_kinase, group.by="ConditionBroad", label=T)
+DimPlot(ovca420_tgfb1_kinase, group.by="Drug", label=T)
+DimPlot(ovca420_tgfb1_kinase, group.by="ConditionBroad", label=T)
+DimPlot(ovca420_egf_kinase, group.by="Drug", label=T)
+DimPlot(ovca420_egf_kinase, group.by="ConditionBroad", label=T)
+DimPlot(ovca420_tnf_kinase, group.by="Drug", label=T)
+DimPlot(ovca420_tnf_kinase, group.by="ConditionBroad", label=T)
+```
+
+# Save point
+```{r}
+saveRDS(a549_untreated_kinase, "../data/A549_Kinase_Untreated.rds")
+saveRDS(a549_tgfb1_kinase, "../data/A549_Kinase_TGFB1.rds")
+saveRDS(a549_egf_kinase, "../data/A549_Kinase_EGF.rds")
+saveRDS(a549_tnf_kinase, "../data/A549_Kinase_TNF.rds")
+
+saveRDS(du145_untreated_kinase, "../data/DU145_Kinase_Untreated.rds")
+saveRDS(du145_tgfb1_kinase, "../data/DU145_Kinase_TGFB1.rds")
+saveRDS(du145_egf_kinase, "../data/DU145_Kinase_EGF.rds")
+saveRDS(du145_tnf_kinase, "../data/DU145_Kinase_TNF.rds")
+
+saveRDS(mcf7_untreated_kinase, "../data/MCF7_Kinase_Untreated.rds")
+saveRDS(mcf7_tgfb1_kinase, "../data/MCF7_Kinase_TGFB1.rds")
+saveRDS(mcf7_egf_kinase, "../data/MCF7_Kinase_EGF.rds")
+saveRDS(mcf7_tnf_kinase, "../data/MCF7_Kinase_TNF.rds")
+
+saveRDS(ovca420_untreated_kinase, "../data/OVCA420_Kinase_Untreated.rds")
+saveRDS(ovca420_tgfb1_kinase, "../data/OVCA420_Kinase_TGFB1.rds")
+saveRDS(ovca420_egf_kinase, "../data/OVCA420_Kinase_EGF.rds")
+saveRDS(ovca420_tnf_kinase, "../data/OVCA420_Kinase_TNF.rds")
+```
+
+```{r}
+a549_untreated_kinase <- readRDS("../data/A549_Kinase_Untreated.rds")
+a549_tgfb1_kinase <- readRDS("../data/A549_Kinase_TGFB1.rds")
+a549_egf_kinase <- readRDS("../data/A549_Kinase_EGF.rds")
+a549_tnf_kinase <- readRDS("../data/A549_Kinase_TNF.rds")
+
+du145_untreated_kinase <- readRDS("../data/DU145_Kinase_Untreated.rds")
+du145_tgfb1_kinase <- readRDS("../data/DU145_Kinase_TGFB1.rds")
+du145_egf_kinase <- readRDS("../data/DU145_Kinase_EGF.rds")
+du145_tnf_kinase <- readRDS("../data/DU145_Kinase_TNF.rds")
+
+mcf7_untreated_kinase <- readRDS("../data/MCF7_Kinase_Untreated.rds")
+mcf7_tgfb1_kinase <- readRDS("../data/MCF7_Kinase_TGFB1.rds")
+mcf7_egf_kinase <- readRDS("../data/MCF7_Kinase_EGF.rds")
+mcf7_tnf_kinase <- readRDS("../data/MCF7_Kinase_TNF.rds")
+
+ovca420_untreated_kinase <- readRDS("../data/OVCA420_Kinase_Untreated.rds")
+ovca420_tgfb1_kinase <- readRDS("../data/OVCA420_Kinase_TGFB1.rds")
+ovca420_egf_kinase <- readRDS("../data/OVCA420_Kinase_EGF.rds")
+ovca420_tnf_kinase <- readRDS("../data/OVCA420_Kinase_TNF.rds")
+```
+
+
+

@@ -1,0 +1,502 @@
+---
+title: "Timecourse - Subsetting data"
+output: html_notebook
+---
+
+# Goal
+
+# Dependencies
+```{r}
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(viridis)
+library(matrixStats)
+```
+
+# Load data
+```{r}
+seurat <- readRDS("../data/seurat_unfiltered.rds")
+cc.genes <- readLines(con = "~/Data/GeneLists/regev_lab_cell_cycle_genes.txt")
+s.genes <- cc.genes[1:43]
+g2m.genes <- cc.genes[44:97]
+```
+
+
+# Explore full data
+Before we subset the data, we'll do a quick look at all of the data and cluster it
+to help subset it
+
+```{r}
+Dark2 <- RColorBrewer::brewer.pal(8, "Dark2")
+Set1 <- RColorBrewer::brewer.pal(8, "Set1")
+Set2 <- RColorBrewer::brewer.pal(8, "Set2")
+```
+
+
+## Counts for each sample
+```{r}
+data <- seurat@meta.data
+data <- group_by(data, CellLine, Treatment) %>%
+  summarise(Count=n())
+data <- na.omit(data)
+data$Treatment <- factor(data$Treatment, levels=c("TGFB1", "EGF", "TNF"))
+
+data_plot <- ggplot(data, aes(x=Treatment, y=Count)) +
+  geom_col(color="black", aes(fill=CellLine)) +
+  facet_wrap(~CellLine, scales="free") +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_manual(values=Dark2[1:4]) +
+  ylab("Cell Count") + xlab("") +
+  theme_classic() +
+  coord_flip() +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(size=12),
+        legend.position="none",
+        axis.text=element_text(size=10, color="black"),
+        axis.title=element_text(size=12))
+ggsave(data_plot, filename = "../figs/Timecourse_CellCounts.png",
+       width=5.5, height=4.25)
+```
+
+
+```{r}
+plot_data <- seurat@meta.data
+plot_data$UMAP1 <- Embeddings(seurat, reduction="umap")[,1]
+plot_data$UMAP2 <- Embeddings(seurat, reduction="umap")[,2]
+plot_data$Doublet <- factor(plot_data$Doublet,
+                            levels=c("Singlet", "Doublet", "Negative"))
+plot_data$CellLine[is.na(plot_data$CellLine)] <- "NA"
+plot_data$CellLine <- factor(plot_data$CellLine, 
+                             levels=c("A549", "DU145", "MCF7", "OVCA420", "NA"))
+#For facet plot
+plot_data_bg <- plot_data
+plot_data_bg$CellLine <- NULL
+
+bulk_plot <- ggplot(plot_data, aes(x=UMAP1, y=UMAP2)) +
+  geom_point(size=0.2, alpha=0.8, aes(color=Doublet)) +
+  scale_color_manual(values=c("grey", "red", "darkgreen")) +
+  theme_void()
+ggsave(bulk_plot, file="../figs/MULTIseq_classifications.pdf",
+       width=4.5, height=3, useDingbats=F)
+ggsave(bulk_plot, file="../figs/MULTIseq_classifications.png",
+       width=4.5, height=3)
+
+bulk_sample_plot <- ggplot(plot_data, aes(x=UMAP1, y=UMAP2)) +
+  geom_point(size=0.2, alpha=0.8, aes(color=CellLine)) +
+  scale_color_manual(values=c(Dark2[1], Dark2[2], Dark2[3], Dark2[4],  "grey")) +
+  theme_void()
+ggsave(bulk_sample_plot, file="../figs/MULTIseq_classifications_CellLine.pdf",
+       width=4.5, height=3, useDingbats=F)
+ggsave(bulk_sample_plot, file="../figs/MULTIseq_classifications_CellLine.png",
+       width=4.5, height=3)
+
+bulk_facet_plot <- ggplot(plot_data, aes(x=UMAP1, y=UMAP2)) +
+  geom_point(data=plot_data_bg, size=0.1, alpha=0.4, color='lightgrey') +
+  geom_point(size=0.2, alpha=0.4, aes(color=CellLine)) +
+  scale_color_manual(values=c(Dark2[1], Dark2[2], Dark2[3], Dark2[4], Dark2[5], "grey20")) +
+  facet_wrap(~CellLine, ncol=5) +
+  theme_void() +
+  theme(legend.position="none",
+          axis.text = element_blank(),
+          axis.title = element_blank(),
+          axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          strip.background = element_blank())
+ggsave(bulk_facet_plot, file="../figs/MULTIseq_classifications_CellLine_facet.pdf",
+       width=10, height=2.5, useDingbats=F)
+ggsave(bulk_facet_plot, file="../figs/MULTIseq_classifications_CellLine_facet.png",
+       width=10, height=2.5)
+
+bulk_plot
+bulk_sample_plot
+bulk_facet_plot
+```
+
+## Frequency of cell annotations in wrong cluster
+```{r}
+plot_data$Cluster <- Idents(seurat)
+bulk_sample_plot <- ggplot(plot_data, aes(x=UMAP1, y=UMAP2)) +
+  geom_point(size=0.1, alpha=0.8, aes(color=Cluster)) +
+  scale_colour_manual(values=c(Set1[1], Set1[2], Set1[3], Set1[4], Set1[5], Set1[7])) +
+  theme_classic() +
+  theme(axis.text=element_blank(),
+        axis.line=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title=element_blank())
+ggsave(bulk_sample_plot, file="../figs/UMAP_clustered.pdf",
+       width=4.5, height=3, useDingbats=F)
+ggsave(bulk_sample_plot, file="../figs/UMAP_clustered.png",
+       width=4.5, height=3)
+bulk_sample_plot
+```
+
+```{r}
+seurat$Cluster <- Idents(seurat)
+```
+
+
+```{r}
+clusters_freq <- plot_data %>%
+  group_by(CellLine, Cluster) %>%
+  summarise(n=n()) %>%
+  mutate(relative_freq = n/sum(n))
+clusters_freq$Cluster <- factor(clusters_freq$Cluster)
+clusters_freq <- dplyr::filter(clusters_freq, CellLine != "NA")
+clusters_freq$CellLine <- factor(clusters_freq$CellLine,
+                                 levels=c("A549", "DU145", "MCF7", "OVCA420"))
+
+freq_plot <- ggplot(clusters_freq, aes(x=CellLine, y=relative_freq)) +
+  geom_col(aes(fill=Cluster), position="stack") +
+  scale_fill_manual(values=c(Set1[1], Set1[2], Set1[3], Set1[4], Set1[5], Set1[7])) +
+  scale_y_continuous(limits=c(0,1), expand=c(0,0)) +
+  ylab("Relative Frequency") +
+  theme_classic() +
+  coord_flip() +
+  theme(strip.background=element_blank(),
+        axis.line.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=12, colour="black"),
+        axis.text = element_text(size=10, colour="black"),
+        #legend.key.size = unit(4, "mm"),
+        legend.position="none")
+ggsave(freq_plot, file="../figs/Cluster_relative_frequency.pdf",
+       width=4, height=1.5)
+ggsave(freq_plot, file="../figs/Cluster_relative_frequency.png",
+       width=4, height=1.5)
+freq_plot
+```
+
+# Function to subset data
+Note: OVCA420s contain two legitimate clusters. Cluster 4 appears to be a divergent population
+based on a more in-depth analysis. This population is unresponsive to any treatments and is not present
+in our deeper dataset from older cell stocks. I'll eliminate it largely because it is unresponsive to any treatment
+
+
+```{r}
+dominant_clusters <- data.frame(CellLine = c("A549", "DU145", "MCF7", "OVCA420"),
+                                Cluster = c(0, 1, 2, 3))
+```
+
+```{r}
+DefaultAssay(seurat) <- "RNA" #Just to ensure everything following is on RNA assay and not SCT
+```
+
+```{r}
+getSeuratSubset <- function(cell_line, treatment){
+  print(paste("Subsetting data to get",cell_line,"cells, treated with", treatment, "..."))
+  cell_filter <- colnames(seurat)[which(seurat$CellLine == cell_line &
+                                          (as.numeric(seurat$Cluster)-1) %in% 
+                                          dplyr::filter(dominant_clusters, 
+                                                        CellLine==cell_line)$Cluster)]
+  #That hacky first part of the last line is just because the as.numeric converts 0-4 to 1-5
+  genes_filter <- rownames(seurat[["RNA"]]@data)[rowSums(as.matrix(seurat[["RNA"]]@data)[, cell_filter]) > 0]
+  
+  print("Subsetting data by cell line")
+  subset_seurat <- subset(seurat, cells=cell_filter, features=genes_filter)
+  
+  print("Re-classifying cell cycle") #likely cleanest on pure cell line
+  subset_seurat <- CellCycleScoring(subset_seurat, s.features = s.genes, 
+                                    g2m.features = g2m.genes, set.ident = FALSE)
+  
+  print("Subsetting data by treatment")
+  cell_filter <- colnames(subset_seurat)[which(subset_seurat$Treatment == treatment)]
+  genes_filter <- rownames(subset_seurat[["RNA"]]@data)[rowSums(as.matrix(subset_seurat[["RNA"]]@data)[, cell_filter]) > 0]
+  subset_seurat <- subset(subset_seurat, cells=cell_filter, features=genes_filter)
+  
+  
+  print("Normalizing the data")
+  subset_seurat <- SCTransform(subset_seurat,
+                               do.correct.umi=T,
+                               vars.to.regress=c("S.Score", "G2M.Score",
+                                                 "percent.mito"),
+                               batch_var="Mix",
+                               return_gene_attr=T,
+                               variable.features.n=2000)
+  
+  print("Re-leveling sample factor")
+  subset_seurat$Sample <- factor(subset_seurat$Sample,
+                                     levels=c(paste0(cell_line, "_", treatment, "_0d"),
+                                              paste0(cell_line, "_", treatment, "_8h"),
+                                              paste0(cell_line, "_", treatment, "_1d"),
+                                              paste0(cell_line, "_", treatment, "_3d"),
+                                              paste0(cell_line, "_", treatment, "_7d"),
+                                              paste0(cell_line, "_", treatment, "_8h_rm"),
+                                              paste0(cell_line, "_", treatment, "_1d_rm"),
+                                              paste0(cell_line, "_", treatment, "_3d_rm")))
+  
+  print("Running PCA...")
+  subset_seurat <- RunPCA(subset_seurat, verbose=F)
+  
+  print("Clustering...")
+  subset_seurat <- FindNeighbors(subset_seurat, dims=1:30)
+  subset_seurat <- FindClusters(subset_seurat, resolution=0.5)
+  
+  print("Running UMAP...")
+  subset_seurat <- RunUMAP(subset_seurat, dims=1:30)
+}
+```
+
+# Subset the data
+```{r}                                                                       
+a549_tgfb1 <- getSeuratSubset("A549", "TGFB1")
+a549_tnf <- getSeuratSubset("A549", "TNF") 
+a549_egf <- getSeuratSubset("A549", "EGF") 
+
+du145_tgfb1 <- getSeuratSubset("DU145", "TGFB1")
+du145_tnf <- getSeuratSubset("DU145", "TNF") 
+du145_egf <- getSeuratSubset("DU145", "EGF")
+
+mcf7_tgfb1 <- getSeuratSubset("MCF7", "TGFB1")
+mcf7_tnf <- getSeuratSubset("MCF7", "TNF")
+mcf7_egf <- getSeuratSubset("MCF7", "EGF")
+
+ovca420_tgfb1 <- getSeuratSubset("OVCA420", "TGFB1")
+ovca420_tnf <- getSeuratSubset("OVCA420", "TNF")
+ovca420_egf <- getSeuratSubset("OVCA420", "EGF")
+```
+
+# Visualize
+```{r}
+DimPlot(a549_tgfb1, reduction='umap', group.by="Mix")
+DimPlot(a549_tgfb1, reduction='umap', group.by='Sample')
+DimPlot(a549_tgfb1, reduction='umap')
+DimPlot(a549_egf, reduction='umap', group.by="Mix")
+DimPlot(a549_egf, reduction='umap', group.by='Sample')
+DimPlot(a549_egf, reduction='umap')
+DimPlot(a549_tnf, reduction='umap', group.by="Mix")
+DimPlot(a549_tnf, reduction='umap', group.by='Sample')
+DimPlot(a549_tnf, reduction='umap')
+```
+
+```{r}
+DimPlot(du145_tgfb1, reduction='umap', group.by="Mix")
+DimPlot(du145_tgfb1, reduction='umap', group.by='Sample')
+DimPlot(du145_tgfb1, reduction='umap')
+DimPlot(du145_egf, reduction='umap',group.by="Mix")
+DimPlot(du145_egf, reduction='umap', group.by='Sample')
+DimPlot(du145_egf, reduction='umap')
+DimPlot(du145_tnf, reduction='umap', group.by="Mix")
+DimPlot(du145_tnf, reduction='umap', group.by='Sample')
+DimPlot(du145_tnf, reduction='umap')
+```
+
+```{r}
+DimPlot(mcf7_tgfb1, reduction='umap', group.by="Mix")
+DimPlot(mcf7_tgfb1, reduction='umap', group.by='Sample')
+DimPlot(mcf7_tgfb1, reduction='umap')
+DimPlot(mcf7_egf, reduction='umap', group.by="Mix")
+DimPlot(mcf7_egf, reduction='umap', group.by='Sample')
+DimPlot(mcf7_egf, reduction='umap')
+DimPlot(mcf7_tnf, reduction='umap', group.by="Mix")
+DimPlot(mcf7_tnf, reduction='umap', group.by='Sample')
+DimPlot(mcf7_tnf, reduction='umap')
+```
+
+```{r}
+DimPlot(ovca420_tgfb1, reduction='umap', group.by="Mix")
+DimPlot(ovca420_tgfb1, reduction='umap', group.by='Sample')
+DimPlot(ovca420_tgfb1, reduction='umap')
+DimPlot(ovca420_egf, reduction='umap', group.by="Mix")
+DimPlot(ovca420_egf, reduction='umap', group.by='Sample')
+DimPlot(ovca420_egf, reduction='umap')
+DimPlot(ovca420_tnf, reduction='umap', group.by="Mix")
+DimPlot(ovca420_tnf, reduction='umap', group.by='Sample')
+DimPlot(ovca420_tnf, reduction='umap')
+```
+
+# Save subsets
+```{r}
+saveRDS(a549_tgfb1, file="../data/A549_TGFB1.rds")
+saveRDS(a549_egf, file="../data/A549_EGF.rds")
+saveRDS(a549_tnf, file="../data/A549_TNF.rds")
+
+saveRDS(du145_tgfb1, file="../data/DU145_TGFB1.rds")
+saveRDS(du145_egf, file="../data/DU145_EGF.rds")
+saveRDS(du145_tnf, file="../data/DU145_TNF.rds")
+
+saveRDS(ovca420_tgfb1, file="../data/OVCA420_TGFB1.rds")
+saveRDS(ovca420_egf, file="../data/OVCA420_EGF.rds")
+saveRDS(ovca420_tnf, file="../data/OVCA420_TNF.rds")
+
+saveRDS(mcf7_tgfb1, file="../data/MCF7_TGFB1.rds")
+saveRDS(mcf7_egf, file="../data/MCF7_EGF.rds")
+saveRDS(mcf7_tnf, file="../data/MCF7_TNF.rds")
+```
+
+
+# Clean up contaminating cells from subsets
+```{r}
+removeClusters <- function(seurat_object, clusters_remove){
+  print("Subsetting data")
+  clusters_keep <- unique(as.character(Idents(seurat_object)))
+  clusters_keep <- clusters_keep[-which(clusters_keep %in% clusters_remove)]
+  seurat_subset <- subset(seurat_object, idents=clusters_keep)
+  
+  #Prep to re-normalize with SCTransform, without trash clusters
+  DefaultAssay(seurat_subset) <- "RNA"
+  
+  print("Normalizing the data")
+  seurat_subset <- SCTransform(seurat_subset,
+                               do.correct.umi=T,
+                               vars.to.regress=c("S.Score", "G2M.Score",
+                                                 "percent.mito"),
+                               batch_var="Mix",
+                               return_gene_attr=T,
+                               variable.features.n=2000)
+  
+  print("Running PCA...")
+  seurat_subset <- RunPCA(seurat_subset, verbose=F)
+  
+  print("Clustering...")
+  seurat_subset <- FindNeighbors(seurat_subset, dims=1:30)
+  seurat_subset <- FindClusters(seurat_subset, resolution=0.5)
+  
+  print("Running UMAP...")
+  seurat_subset <- RunUMAP(seurat_subset, dims=1:30)
+}
+```
+
+```{r}
+a549_tgfb1 <- removeClusters(a549_tgfb1, 4)
+a549_egf <- removeClusters(a549_egf, c(5,6,8))
+a549_tnf <- removeClusters(a549_tnf, c(6,7,9,10,11))
+
+du145_tgfb1 <- removeClusters(du145_tgfb1, c(6,7))
+du145_egf <- removeClusters(du145_egf, c(5,6,8))
+du145_tnf <- removeClusters(du145_tnf, c(3,4,8))
+
+mcf7_tgfb1 <- removeClusters(mcf7_tgfb1, c(4))
+mcf7_egf <- removeClusters(mcf7_egf, c(6,7))
+mcf7_tnf <- removeClusters(mcf7_tnf, c(4))
+
+ovca420_egf <- removeClusters(ovca420_egf, c(3,4))
+ovca420_tnf <- removeClusters(ovca420_tnf, c(4,5,6))
+```
+
+# Re-visualize
+```{r}
+DimPlot(a549_tgfb1, reduction='umap', group.by="Mix")
+DimPlot(a549_tgfb1, reduction='umap', group.by='Sample')
+DimPlot(a549_tgfb1, reduction='umap')
+DimPlot(a549_egf, reduction='umap', group.by="Mix")
+DimPlot(a549_egf, reduction='umap', group.by='Sample')
+DimPlot(a549_egf, reduction='umap')
+DimPlot(a549_tnf, reduction='umap', group.by="Mix")
+DimPlot(a549_tnf, reduction='umap', group.by='Sample')
+DimPlot(a549_tnf, reduction='umap')
+```
+
+```{r}
+DimPlot(du145_tgfb1, reduction='umap', group.by="Mix")
+DimPlot(du145_tgfb1, reduction='umap', group.by='Sample')
+DimPlot(du145_tgfb1, reduction='umap')
+DimPlot(du145_egf, reduction='umap',group.by="Mix")
+DimPlot(du145_egf, reduction='umap', group.by='Sample')
+DimPlot(du145_egf, reduction='umap')
+DimPlot(du145_tnf, reduction='umap', group.by="Mix")
+DimPlot(du145_tnf, reduction='umap', group.by='Sample')
+DimPlot(du145_tnf, reduction='umap')
+```
+
+```{r}
+DimPlot(mcf7_tgfb1, reduction='umap', group.by="Mix")
+DimPlot(mcf7_tgfb1, reduction='umap', group.by='Sample')
+DimPlot(mcf7_tgfb1, reduction='umap')
+DimPlot(mcf7_egf, reduction='umap', group.by="Mix")
+DimPlot(mcf7_egf, reduction='umap', group.by='Sample')
+DimPlot(mcf7_egf, reduction='umap')
+DimPlot(mcf7_tnf, reduction='umap', group.by="Mix")
+DimPlot(mcf7_tnf, reduction='umap', group.by='Sample')
+DimPlot(mcf7_tnf, reduction='umap')
+```
+
+```{r}
+DimPlot(ovca420_tgfb1, reduction='umap', group.by="Mix")
+DimPlot(ovca420_tgfb1, reduction='umap', group.by='Sample')
+DimPlot(ovca420_tgfb1, reduction='umap')
+DimPlot(ovca420_egf, reduction='umap', group.by="Mix")
+DimPlot(ovca420_egf, reduction='umap', group.by='Sample')
+DimPlot(ovca420_egf, reduction='umap')
+DimPlot(ovca420_tnf, reduction='umap', group.by="Mix")
+DimPlot(ovca420_tnf, reduction='umap', group.by='Sample')
+DimPlot(ovca420_tnf, reduction='umap')
+```
+
+# Subsetting cell lines with aggregated treatments
+```{r}
+getSeuratSubset <- function(cell_line){
+  print(paste("Subsetting data to get",cell_line,"cell"))
+  cell_filter <- colnames(seurat)[which(seurat$CellLine == cell_line &
+                                          (as.numeric(seurat$Cluster)-1) %in% 
+                                          dplyr::filter(dominant_clusters, 
+                                                        CellLine==cell_line)$Cluster)]
+  #That hacky first part of the last line is just because the as.numeric converts 0-4 to 1-5
+  genes_filter <- rownames(seurat[["RNA"]]@data)[rowSums(as.matrix(seurat[["RNA"]]@data)[, cell_filter]) > 0]
+  
+  print("Subsetting data by cell line")
+  subset_seurat <- subset(seurat, cells=cell_filter, features=genes_filter)
+  
+  print("Re-classifying cell cycle") #likely cleanest on pure cell line
+  subset_seurat <- CellCycleScoring(subset_seurat, s.features = s.genes, 
+                                    g2m.features = g2m.genes, set.ident = FALSE)
+  
+  
+  print("Normalizing the data")
+  subset_seurat <- SCTransform(subset_seurat,
+                               do.correct.umi=T,
+                               vars.to.regress=c("S.Score", "G2M.Score",
+                                                 "percent.mito"),
+                               batch_var="Mix",
+                               return_gene_attr=T,
+                               variable.features.n=5000)
+  
+  print("Running PCA...")
+  subset_seurat <- RunPCA(subset_seurat, verbose=F)
+  
+  print("Clustering...")
+  subset_seurat <- FindNeighbors(subset_seurat, dims=1:30)
+  subset_seurat <- FindClusters(subset_seurat, resolution=0.5)
+  
+  print("Running UMAP...")
+  subset_seurat <- RunUMAP(subset_seurat, dims=1:30)
+}
+```
+
+```{r}
+a549 <- getSeuratSubset("A549")
+du145 <- getSeuratSubset("DU145")
+mcf7 <- getSeuratSubset("MCF7")
+ovca420 <- getSeuratSubset("OVCA420")
+```
+
+## Visualize embeddings
+```{r}
+DimPlot(a549, group.by="Treatment")
+DimPlot(du145, group.by="Treatment")
+DimPlot(mcf7, group.by="Treatment")
+DimPlot(ovca420, group.by="Treatment")
+```
+
+
+# Save final subsets
+
+```{r}
+saveRDS(a549_tgfb1, file="../data/A549_TGFB1.rds")
+saveRDS(a549_egf, file="../data/A549_EGF.rds")
+saveRDS(a549_tnf, file="../data/A549_TNF.rds")
+
+saveRDS(du145_tgfb1, file="../data/DU145_TGFB1.rds")
+saveRDS(du145_egf, file="../data/DU145_EGF.rds")
+saveRDS(du145_tnf, file="../data/DU145_TNF.rds")
+
+saveRDS(ovca420_tgfb1, file="../data/OVCA420_TGFB1.rds")
+saveRDS(ovca420_egf, file="../data/OVCA420_EGF.rds")
+saveRDS(ovca420_tnf, file="../data/OVCA420_TNF.rds")
+
+saveRDS(mcf7_tgfb1, file="../data/MCF7_TGFB1.rds")
+saveRDS(mcf7_egf, file="../data/MCF7_EGF.rds")
+saveRDS(mcf7_tnf, file="../data/MCF7_TNF.rds")
+```
+
+

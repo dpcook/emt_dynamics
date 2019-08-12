@@ -1,0 +1,1425 @@
+---
+title: "Processing: Timecourse data"
+output: html_notebook
+---
+
+# Goal
+The goal of this notebook is to 1) take the cellranger output for these time course samples and get them into Seurat objects, and 2) perform LMO counting for each sample and use that to annotate the cells in the seurat object
+
+# Dependencies
+```{r}
+library(Seurat) #v3.x
+library(viridis)
+library(dplyr)
+library(cowplot)
+```
+
+# Load in the Cellranger output
+```{r}
+mix1_mat <- Read10X(data.dir = "../data/cellranger/Mix1/filtered_gene_bc_matrices/GRCh38/")
+mix2_mat <- Read10X(data.dir = "../data/cellranger/Mix2/filtered_gene_bc_matrices/GRCh38/")
+mix3a_mat <- Read10X(data.dir="../data/cellranger/Mix3a/filtered_gene_bc_matrices/GRCh38/")
+mix3b_mat <- Read10X(data.dir="../data/cellranger/Mix3b/filtered_gene_bc_matrices/GRCh38/")
+mix4a_mat <- Read10X(data.dir="../data/cellranger/Mix4a/filtered_gene_bc_matrices/GRCh38/")
+mix4b_mat <- Read10X(data.dir="../data/cellranger/Mix4b/filtered_gene_bc_matrices/GRCh38/")
+```
+
+```{r}
+mix1.cells <- data.frame(cell = colnames(mix1_mat))
+write.table(mix1.cells, "../data/Mix1_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+
+mix2.cells <- data.frame(cell = colnames(mix2_mat))
+write.table(mix2.cells, "../data/Mix2_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+
+mix3a.cells <- data.frame(cell = colnames(mix3a_mat))
+write.table(mix3a.cells, "../data/Mix3a_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+
+mix3b.cells <- data.frame(cell = colnames(mix3b_mat))
+write.table(mix3b.cells, "../data/Mix3b_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+
+mix4a.cells <- data.frame(cell = colnames(mix4a_mat))
+write.table(mix4a.cells, "../data/Mix4a_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+
+mix4b.cells <- data.frame(cell = colnames(mix4b_mat))
+write.table(mix4b.cells, "../data/Mix4b_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+```
+
+# Mix 1 QC and basic Processing
+This first round of processing is only just to get the data organized. Each condition will be filtered out and reprocessed later
+
+```{r}
+seurat <- CreateSeuratObject(mix1_mat, min.cells = 3, 
+                             min.features = 200,
+                             project = "Mix1")
+```
+
+```{r}
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.09)
+mix1_keep <- colnames(seurat)
+mix1_seurat <- seurat
+```
+
+# Mix2 QC and basic processing
+```{r}
+seurat <- CreateSeuratObject(mix2_mat, min.cells = 3, 
+                             min.features = 200,
+                             project = "Mix2")
+
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.1)
+mix2_keep <- colnames(seurat)
+mix2_seurat <- seurat
+```
+
+# Mix3a QC and basic processing
+```{r}
+seurat <- CreateSeuratObject(mix3a_mat, min.cells = 3, 
+                             min.features = 200,
+                             project = "Mix3a")
+
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.1)
+mix3a_keep <- colnames(seurat)
+mix3a_seurat <- seurat
+```
+
+# Mix3b QC and basic processing
+
+```{r}
+seurat <- CreateSeuratObject(mix3b_mat, min.cells = 3, 
+                             min.features = 200,
+                             project = "Mix3b")
+
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.1)
+mix3b_keep <- colnames(seurat)
+mix3b_seurat <- seurat
+```
+
+# Mix4a QC and basic processing
+
+```{r}
+seurat <- CreateSeuratObject(mix4a_mat, min.cells = 3, 
+                             min.features = 200,
+                             project = "Mix4a")
+
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.11)
+mix4a_keep <- colnames(seurat)
+mix4a_seurat <- seurat
+```
+
+# Mix4b QC and basic processing
+
+```{r}
+seurat <- CreateSeuratObject(mix4b_mat, min.cells = 3, 
+                             min.features = 200,
+                             project = "Mix4b")
+
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.1)
+mix4b_keep <- colnames(seurat)
+mix4b_seurat <- seurat
+```
+
+# Combine data
+```{r}
+length(c(mix1_keep, mix2_keep, mix3a_keep, mix3b_keep, mix4a_keep, mix4b_keep))
+```
+
+```{r}
+seurat <- merge(mix1_seurat, list(mix2_seurat, mix3a_seurat,
+                             mix3b_seurat, mix4a_seurat, mix4b_seurat),
+                add.cell.ids = c("Mix1", "Mix2", "Mix3a", "Mix3b",
+                                 "Mix4a", "Mix4b"),
+                project = "EMT_Timecourse")
+```
+
+```{r}
+rm(mix1_seurat, mix2_seurat, mix3a_seurat, mix3b_seurat,
+   mix4a_seurat, mix4b_seurat)
+```
+
+
+# Annotate cells based on LMOs
+```{r}
+bar.ref <- read.csv("../data/LMOlist.csv", stringsAsFactors = F,
+                    header=F)$V1
+```
+
+## Quantify barcodes from fastq files
+```{r}
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Mix1-Barcode/R1_paired.fastq.gz",
+                                 R2 = "../fastq/Mix1-Barcode/R2_paired.fastq.gz",
+                                 cellIDs = mix1_keep,
+                                 chemistry="V2")
+mix1_bar_table <- MULTIseq.align(readTable, mix1_keep, bar.ref)
+write.csv(mix1_bar_table, file="../data/Mix1_barcode_counts.csv", quote=F)
+
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Mix2-Barcode/R1_paired.fastq.gz",
+                                 R2 = "../fastq/Mix2-Barcode/R2_paired.fastq.gz",
+                                 cellIDs = mix2_keep,
+                                 chemistry="V2")
+mix2_bar_table <- MULTIseq.align(readTable, mix2_keep, bar.ref)
+write.csv(mix2_bar_table, file="../data/Mix2_barcode_counts.csv", quote=F)
+
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Mix3a-Barcode/R1_paired.fastq.gz",
+                                 R2 = "../fastq/Mix3a-Barcode/R2_paired.fastq.gz",
+                                 cellIDs = mix3a_keep,
+                                 chemistry="V2")
+mix3a_bar_table <- MULTIseq.align(readTable, mix3a_keep, bar.ref)
+write.csv(mix3a_bar_table, file="../data/Mix3a_barcode_counts.csv", quote=F)
+
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Mix3b-Barcode/R1_paired.fastq.gz",
+                                 R2 = "../fastq/Mix3b-Barcode/R2_paired.fastq.gz",
+                                 cellIDs = mix3b_keep,
+                                 chemistry="V2")
+mix3b_bar_table <- MULTIseq.align(readTable, mix3b_keep, bar.ref)
+write.csv(mix3b_bar_table, file="../data/Mix3b_barcode_counts.csv", quote=F)
+
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Mix4a-Barcode/R1_paired.fastq.gz",
+                                 R2 = "../fastq/Mix4a-Barcode/R2_paired.fastq.gz",
+                                 cellIDs = mix4a_keep,
+                                 chemistry="V2")
+mix4a_bar_table <- MULTIseq.align(readTable, mix4a_keep, bar.ref)
+write.csv(mix4a_bar_table, file="../data/Mix4a_barcode_counts.csv", quote=F)
+
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Mix4b-Barcode/R1_paired.fastq.gz",
+                                 R2 = "../fastq/Mix4b-Barcode/R2_paired.fastq.gz",
+                                 cellIDs = mix4b_keep,
+                                 chemistry="V2")
+mix4b_bar_table <- MULTIseq.align(readTable, mix4b_keep, bar.ref)
+write.csv(mix4b_bar_table, file="../data/Mix4b_barcode_counts.csv", quote=F)
+```
+
+## Mix1 Annotation
+```{r}
+mix1_tsne <- barTSNE(mix1_bar_table[,1:96])
+```
+
+```{r}
+mix1.temp <- mix1_bar_table
+mix1.temp$TSNE1 <- mix1_tsne$TSNE1
+mix1.temp$TSNE2 <- mix1_tsne$TSNE2
+write.csv(mix1.temp, file="../output/mix1_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(mix1_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- mix1_tsne$TSNE1
+temp$TSNE2 <- mix1_tsne$TSNE2
+
+
+for (LMO in colnames(mix1_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Mix1/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+mix1_remove <- c(1, 6, 12, 15, 21, 26, 29, 36, 39, 
+                 40, 41, 42, 53, 64, 61, 73, 85)
+```
+
+```{r}
+mix1_bar_filtered <- mix1_bar_table[,1:96]
+mix1_bar_filtered <- mix1_bar_filtered[,-mix1_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(mix1_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(mix1_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+mix1_bar_filtered <- mix1_bar_filtered[-which(rownames(mix1_bar_filtered) %in% neg.cells), ]
+```
+
+
+Note: With this multiplex run, I've tried the multiple rounds of classification, but
+the calls after Round 1 are quite good by inspection
+
+Let's quickly look at the TSNE with classifications
+```{r}
+mix1_tsne$Classification <- "Singlet"
+mix1_tsne$Classification[which(round1.calls[rownames(mix1_tsne)]=="Doublet")] <- "Doublet"
+mix1_tsne$Classification[which(round1.calls[rownames(mix1_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix1_tsne$Classification)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix1_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+The singlets/doublets look fair. We're losing a lot as negatives around fairly obvious clusters.
+Let's try to reclassify them
+
+### Negative reclassification
+```{r}
+mix1_bar_full <- mix1_bar_table[,1:96]
+mix1_bar_full <- mix1_bar_full[,-mix1_remove]
+reclass.cells <- findReclassCells(mix1_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells_temp(mix1_bar_full, round1.calls[rownames(mix1_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1, ], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 11) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+mix1_tsne$Classification <- "Singlet"
+mix1_tsne$Classification[which(final.calls[rownames(mix1_tsne)]=="Doublet")] <- "Doublet"
+mix1_tsne$Classification[which(final.calls[rownames(mix1_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix1_tsne$Classification)
+```
+
+```{r}
+table(final.calls) - table(round1.calls)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix1_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, alpha=0.5, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Mix1_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+## Assess sample classifications on TSNE
+```{r}
+mix1.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- mix1_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(mix1_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Mix1/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(mix1.samples, plotSampleTSNE)
+```
+
+```{r}
+mix1_calls <- final.calls
+```
+
+## Mix2 Annotation
+```{r}
+mix2_tsne <- barTSNE(mix2_bar_table[,1:96])
+```
+
+```{r}
+mix2.temp <- mix2_bar_table
+mix2.temp$TSNE1 <- mix2.temp$TSNE1
+mix2.temp$TSNE2 <- mix2.temp$TSNE2
+write.csv(mix2.temp, file="../output/mix2_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(mix2_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- mix2_tsne$TSNE1
+temp$TSNE2 <- mix2_tsne$TSNE2
+
+
+for (LMO in colnames(mix2_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Mix2/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+mix2_remove <- c(58, 79, 81,82, 84, 85, 91, 92, 93, 94, 96)
+```
+
+```{r}
+mix2_bar_filtered <- mix2_bar_table[,1:96]
+mix2_bar_filtered <- mix2_bar_filtered[,-mix2_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(mix2_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(mix2_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+mix2_bar_filtered <- mix2_bar_filtered[-which(rownames(mix2_bar_filtered) %in% neg.cells), ]
+```
+
+
+Note: With this multiplex run, I've tried the multiple rounds of classification, but
+the calls after Round 1 are quite good by inspection
+
+Let's quickly look at the TSNE with classifications
+```{r}
+mix2_tsne$Classification <- "Singlet"
+mix2_tsne$Classification[which(round1.calls[rownames(mix2_tsne)]=="Doublet")] <- "Doublet"
+mix2_tsne$Classification[which(round1.calls[rownames(mix2_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix2_tsne$Classification)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix2_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+The singlets/doublets look fair. We're losing a lot as negatives around fairly obvious clusters.
+Let's try to reclassify them
+
+### Negative reclassification
+```{r}
+mix2_bar_full <- mix2_bar_table[,1:96]
+mix2_bar_full <- mix2_bar_full[,-mix2_remove]
+reclass.cells <- findReclassCells(mix2_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells_temp(mix2_bar_full, round1.calls[rownames(mix2_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1, ], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 10) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+mix2_tsne$Classification <- "Singlet"
+mix2_tsne$Classification[which(final.calls[rownames(mix2_tsne)]=="Doublet")] <- "Doublet"
+mix2_tsne$Classification[which(final.calls[rownames(mix2_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix2_tsne$Classification)
+```
+
+```{r}
+table(final.calls) - table(round1.calls)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix2_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Mix2_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+
+## Assess sample classifications on TSNE
+```{r}
+mix2.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- mix2_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(mix2_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Mix2/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(mix2.samples, plotSampleTSNE)
+```
+
+```{r}
+mix2_calls <- final.calls
+```
+
+## Mix3a Annotation
+```{r}
+mix3a_tsne <- barTSNE(mix3a_bar_table[,1:96])
+```
+
+```{r}
+mix3a.temp <- mix3a_bar_table
+mix3a.temp$TSNE1 <- mix3a_tsne$TSNE1
+mix3a.temp$TSNE2 <- mix3a_tsne$TSNE2
+write.csv(mix3a.temp, file="../output/mix3a_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(mix3a_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- mix3a_tsne$TSNE1
+temp$TSNE2 <- mix3a_tsne$TSNE2
+
+
+for (LMO in colnames(mix3a_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Mix3a/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+mix3a_remove <- c(25, 31, 55, 69, 70, 79)
+```
+
+```{r}
+mix3a_bar_filtered <- mix3a_bar_table[,1:96]
+mix3a_bar_filtered <- mix3a_bar_filtered[,-mix3a_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(mix3a_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(mix3a_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+mix3a_bar_filtered <- mix3a_bar_filtered[-which(rownames(mix3a_bar_filtered) %in% neg.cells), ]
+```
+
+
+Note: With this multiplex run, I've tried the multiple rounds of classification, but
+the calls after Round 1 are quite good by inspection
+
+Let's quickly look at the TSNE with classifications
+```{r}
+mix3a_tsne$Classification <- "Singlet"
+mix3a_tsne$Classification[which(round1.calls[rownames(mix3a_tsne)]=="Doublet")] <- "Doublet"
+mix3a_tsne$Classification[which(round1.calls[rownames(mix3a_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix3a_tsne$Classification)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix3a_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+The singlets/doublets look fair. We're losing a lot as negatives around fairly obvious clusters.
+Let's try to reclassify them
+
+### Negative reclassification
+```{r}
+mix3a_bar_full <- mix3a_bar_table[,1:96]
+mix3a_bar_full <- mix3a_bar_full[,-mix3a_remove]
+reclass.cells <- findReclassCells(mix3a_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells(mix3a_bar_full, round1.calls[rownames(mix3a_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1, ], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 9) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+mix3a_tsne$Classification <- "Singlet"
+mix3a_tsne$Classification[which(final.calls[rownames(mix3a_tsne)]=="Doublet")] <- "Doublet"
+mix3a_tsne$Classification[which(final.calls[rownames(mix3a_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix3a_tsne$Classification)
+```
+
+```{r}
+table(final.calls) - table(round1.calls)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix3a_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Mix3a_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+## Assess sample classifications on TSNE
+```{r}
+mix3a.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- mix3a_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(mix3a_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Mix3a/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(mix3a.samples, plotSampleTSNE)
+```
+
+```{r}
+mix3a_calls <- final.calls
+```
+
+```{r}
+write.csv(mix3a_tsne, file="../output/mix3a_barcode_tsne_classifications.csv",
+          quote=F)
+```
+
+
+## Mix3b Annotation
+```{r}
+mix3b_tsne <- barTSNE(mix3b_bar_table[,1:96])
+```
+
+```{r}
+mix3b.temp <- mix3b_bar_table
+mix3b.temp$TSNE1 <- mix3b_tsne$TSNE1
+mix3b.temp$TSNE2 <- mix3b_tsne$TSNE2
+write.csv(mix3b.temp, file="../output/mix3b_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(mix3b_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- mix3b_tsne$TSNE1
+temp$TSNE2 <- mix3b_tsne$TSNE2
+
+
+for (LMO in colnames(mix3b_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Mix3b/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+mix3b_remove <- c(25, 31, 55, 79, 92)
+```
+
+```{r}
+mix3b_bar_filtered <- mix3b_bar_table[,1:96]
+mix3b_bar_filtered <- mix3b_bar_filtered[,-mix3b_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(mix3b_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(mix3b_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+mix3b_bar_filtered <- mix3b_bar_filtered[-which(rownames(mix3b_bar_filtered) %in% neg.cells), ]
+```
+
+
+Note: With this multiplex run, I've tried the multiple rounds of classification, but
+the calls after Round 1 are quite good by inspection
+
+Let's quickly look at the TSNE with classifications
+```{r}
+mix3b_tsne$Classification <- "Singlet"
+mix3b_tsne$Classification[which(round1.calls[rownames(mix3b_tsne)]=="Doublet")] <- "Doublet"
+mix3b_tsne$Classification[which(round1.calls[rownames(mix3b_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix3b_tsne$Classification)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix3b_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+The singlets/doublets look fair. We're losing a lot as negatives around fairly obvious clusters.
+Let's try to reclassify them
+
+### Negative reclassification
+```{r}
+mix3b_bar_full <- mix3b_bar_table[,1:96]
+mix3b_bar_full <- mix3b_bar_full[,-mix3b_remove]
+reclass.cells <- findReclassCells(mix3b_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells_temp(mix3b_bar_full, round1.calls[rownames(mix3b_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1, ], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 8) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+mix3b_tsne$Classification <- "Singlet"
+mix3b_tsne$Classification[which(final.calls[rownames(mix3b_tsne)]=="Doublet")] <- "Doublet"
+mix3b_tsne$Classification[which(final.calls[rownames(mix3b_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix3b_tsne$Classification)
+```
+
+```{r}
+table(final.calls) - table(round1.calls)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix3b_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Mix3b_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+## Assess sample classifications on TSNE
+```{r}
+mix3b.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- mix3b_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(mix3b_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Mix3b/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(mix3b.samples, plotSampleTSNE)
+```
+
+```{r}
+mix3b_calls <- final.calls
+```
+
+## Mix4a Annotation
+```{r}
+mix4a_tsne <- barTSNE(mix4a_bar_table[,1:96])
+```
+
+```{r}
+mix4a.temp <- mix4a_bar_table
+mix4a.temp$TSNE1 <- mix4a_tsne$TSNE1
+mix4a.temp$TSNE2 <- mix4a_tsne$TSNE2
+write.csv(mix4a.temp, file="../output/mix4a_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(mix4a_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- mix4a_tsne$TSNE1
+temp$TSNE2 <- mix4a_tsne$TSNE2
+
+
+for (LMO in colnames(mix4a_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Mix4a/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+mix4a_remove <- c(4, 12, 16, 28, 40, 42, 65, 66, 88)
+#12 looks like it could be classified but the signal is suuuper low and ends up not
+#being classified at all
+```
+
+```{r}
+mix4a_bar_filtered <- mix4a_bar_table[,1:96]
+mix4a_bar_filtered <- mix4a_bar_filtered[,-mix4a_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(mix4a_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(mix4a_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+mix4a_bar_filtered <- mix4a_bar_filtered[-which(rownames(mix4a_bar_filtered) %in% neg.cells), ]
+```
+
+Let's quickly look at the TSNE with classifications
+```{r}
+mix4a_tsne$Classification <- "Singlet"
+mix4a_tsne$Classification[which(round1.calls[rownames(mix4a_tsne)]=="Doublet")] <- "Doublet"
+mix4a_tsne$Classification[which(round1.calls[rownames(mix4a_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix4a_tsne$Classification)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix4a_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+
+### Negative reclassification
+```{r}
+mix4a_bar_full <- mix4a_bar_table[,1:96]
+mix4a_bar_full <- mix4a_bar_full[,-mix4a_remove]
+reclass.cells <- findReclassCells(mix4a_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells(mix4a_bar_full, round1.calls[rownames(mix4a_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1,], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 7) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+mix4a_tsne$Classification <- "Singlet"
+mix4a_tsne$Classification[which(final.calls[rownames(mix4a_tsne)]=="Doublet")] <- "Doublet"
+mix4a_tsne$Classification[which(final.calls[rownames(mix4a_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix4a_tsne$Classification)
+```
+
+```{r}
+table(final.calls) - table(round1.calls)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix4a_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Mix4a_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+## Assess sample classifications on TSNE
+```{r}
+mix4a.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- mix4a_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(mix4a_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Mix4a/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(mix4a.samples, plotSampleTSNE)
+```
+
+```{r}
+mix4a_calls <- final.calls
+```
+
+## Mix4b Annotation
+```{r}
+mix4b_tsne <- barTSNE(mix4b_bar_table[,1:96])
+```
+
+```{r}
+mix4b.temp <- mix4b_bar_table
+mix4b.temp$TSNE1 <- mix4b_tsne$TSNE1
+mix4b.temp$TSNE2 <- mix4b_tsne$TSNE2
+write.csv(mix4b.temp, file="../output/mix4b_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(mix4b_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- mix4b_tsne$TSNE1
+temp$TSNE2 <- mix4b_tsne$TSNE2
+
+
+for (LMO in colnames(mix4b_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Mix4b/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+mix4b_remove <- c(4, 6, 9, 12, 16, 28, 42)
+```
+
+```{r}
+mix4b_bar_filtered <- mix4b_bar_table[,1:96]
+mix4b_bar_filtered <- mix4b_bar_filtered[,-mix4b_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(mix4b_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(mix4b_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+mix4b_bar_filtered <- mix4b_bar_filtered[-which(rownames(mix4b_bar_filtered) %in% neg.cells), ]
+```
+
+Let's quickly look at the TSNE with classifications
+```{r}
+mix4b_tsne$Classification <- "Singlet"
+mix4b_tsne$Classification[which(round1.calls[rownames(mix4b_tsne)]=="Doublet")] <- "Doublet"
+mix4b_tsne$Classification[which(round1.calls[rownames(mix4b_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix4b_tsne$Classification)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix4b_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+
+### Negative reclassification
+```{r}
+mix4b_bar_full <- mix4b_bar_table[,1:96]
+mix4b_bar_full <- mix4b_bar_full[,-mix4b_remove]
+reclass.cells <- findReclassCells(mix4b_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells(mix4b_bar_full, round1.calls[rownames(mix4b_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1,], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 6) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+mix4b_tsne$Classification <- "Singlet"
+mix4b_tsne$Classification[which(final.calls[rownames(mix4b_tsne)]=="Doublet")] <- "Doublet"
+mix4b_tsne$Classification[which(final.calls[rownames(mix4b_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(mix4b_tsne$Classification)
+```
+
+```{r}
+table(final.calls) - table(round1.calls)
+```
+
+
+```{r}
+tsne_classification <- ggplot(mix4b_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Mix4b_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+## Assess sample classifications on TSNE
+```{r}
+mix4b.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- mix4b_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(mix4b_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Mix4b/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(mix4b.samples, plotSampleTSNE)
+```
+
+```{r}
+mix4b_calls <- final.calls
+```
+
+# Build annotation table
+Goal here is to match the barcode annotations to specific conditions.
+
+This is manually just building the table showing what barcode got added to each well.
+Note that we reversed the barcode order between replicates (see Mix1 vs. Mix2 annotations)
+```{r}
+library(tidyr)
+mix2_annotations <- data.frame(barcode=colnames(mix1_bar_table)[1:96])
+mix2_annotations$CellLine <- rep(c("A549", "A549", "A549", "DU145", "DU145", "DU145",
+                              "MCF7", "MCF7", "MCF7", "OVCA420", "OVCA420", "OVCA420"), 8)
+mix2_annotations$Treatment <- rep(c("TGFB1", "EGF", "TNF"), 32)
+mix2_annotations$Time <- rep(c("0d", "8h", "1d", "3d", "7d", "8h_rm", "1d_rm", "3d_rm"), each=12)
+
+mix1_annotations <- mix2_annotations
+mix1_annotations$CellLine <- rev(mix1_annotations$CellLine)
+mix1_annotations$Treatment <- rev(mix1_annotations$Treatment)
+mix1_annotations$Time <- rev(mix1_annotations$Time)
+
+mix3a_annotations <- mix2_annotations #Mix 3a/b labelled A1-H12
+mix3b_annotations <- mix2_annotations
+mix4a_annotations <- mix1_annotations #Mix 4a/b labelled H12-A1
+mix4b_annotations <- mix1_annotations
+```
+
+```{r}
+mix1_annotations$Mix <- "Mix1"
+mix1_annotations$CellCount <- table(mix1_calls)[as.character(mix1_annotations$barcode)]
+mix1_annotations$CellCount[is.na(mix1_annotations$CellCount)] <- 0
+
+mix2_annotations$Mix <- "Mix2"
+mix2_annotations$CellCount <- table(mix2_calls)[as.character(mix2_annotations$barcode)]
+mix2_annotations$CellCount[is.na(mix2_annotations$CellCount)] <- 0
+
+mix3a_annotations$Mix <- "Mix3a"
+mix3a_annotations$CellCount <- table(mix3a_calls)[as.character(mix3a_annotations$barcode)]
+mix3a_annotations$CellCount[is.na(mix3a_annotations$CellCount)] <- 0
+
+mix3b_annotations$Mix <- "Mix3b"
+mix3b_annotations$CellCount <- table(mix3b_calls)[as.character(mix3b_annotations$barcode)]
+mix3b_annotations$CellCount[is.na(mix3b_annotations$CellCount)] <- 0
+
+mix4a_annotations$Mix <- "Mix4a"
+mix4a_annotations$CellCount <- table(mix4a_calls)[as.character(mix4a_annotations$barcode)]
+mix4a_annotations$CellCount[is.na(mix4a_annotations$CellCount)] <- 0
+
+mix4b_annotations$Mix <- "Mix4b"
+mix4b_annotations$CellCount <- table(mix4b_calls)[as.character(mix4b_annotations$barcode)]
+mix4b_annotations$CellCount[is.na(mix4b_annotations$CellCount)] <- 0
+```
+
+```{r}
+#Master annotation
+annotations <- dplyr::bind_rows(mix1_annotations, mix2_annotations, mix3a_annotations,
+                                mix3b_annotations, mix4a_annotations, mix4b_annotations)
+annotations$Sample <-paste0(annotations$CellLine, "_", annotations$Treatment, "_", annotations$Time)
+annotations$Sample <- factor(annotations$Sample, levels=unique(dplyr::arrange(annotations, Sample)$Sample))
+```
+
+```{r}
+write.csv(annotations, file="../output/annotation_counts.csv", quote=F)
+```
+
+## Look at distribution
+```{r}
+dist.plot <- ggplot(annotations, aes(x=Sample, y=CellCount)) +
+  geom_bar(stat="identity", aes(fill=Mix)) +
+  geom_hline(yintercept = c(200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000,
+                            2200, 2400, 2600), 
+             linetype=2, color="grey") +
+  theme_classic() +
+  coord_flip()+
+  theme(axis.text.x=element_text(angle=45, hjust=1),
+        axis.title.y=element_blank())
+ggsave(dist.plot, file="../figs/sample_distribution.png", width=4, height=18)
+ggsave(dist.plot, file="../figs/sample_distribution.pdf", width=4, height=18)
+```
+
+# Map annotations onto Seurat object
+
+```{r}
+cell.classifications <- data.frame(cell = c(paste0("Mix1_", names(mix1_calls)),
+                                            paste0("Mix2_", names(mix2_calls)),
+                                            paste0("Mix3a_", names(mix3a_calls)),
+                                            paste0("Mix3b_", names(mix3b_calls)),
+                                            paste0("Mix4a_", names(mix4a_calls)),
+                                            paste0("Mix4b_", names(mix4b_calls))),
+                                   classification = c(paste0("Mix1_",mix1_calls),
+                                                      paste0("Mix2_",mix2_calls),
+                                                      paste0("Mix3a_",mix3a_calls),
+                                                      paste0("Mix3b_",mix3b_calls),
+                                                      paste0("Mix4a_",mix4a_calls),
+                                                      paste0("Mix4b_",mix4b_calls)))
+annotations$Merge <- paste0(annotations$Mix, "_", annotations$barcode)
+
+cell.classifications <- left_join(cell.classifications, annotations,
+                                  by=c("classification"="Merge"))
+rownames(cell.classifications) <- cell.classifications$cell
+```
+
+```{r}
+seurat$Sample <- cell.classifications[colnames(seurat),"Sample"]
+seurat$CellLine <- cell.classifications[colnames(seurat),"CellLine"]
+seurat$Treatment <- cell.classifications[colnames(seurat),"Treatment"]
+seurat$Time <- cell.classifications[colnames(seurat),"Time"]
+
+seurat$Doublet <- "Singlet"
+seurat$Doublet[which(cell.classifications[colnames(seurat), "classification"] %in% c("Mix1_Doublet", "Mix2_Doublet", "Mix3a_Doublet", "Mix3b_Doublet", "Mix4a_Doublet", "Mix4b_Doublet"))] <- "Doublet"
+seurat$Doublet[which(cell.classifications[colnames(seurat), "classification"] %in% c("Mix1_Negative", "Mix2_Negative", "Mix3a_Negative", "Mix3b_Negative", "Mix4a_Negative", "Mix4b_Negative"))] <- "Negative"
+
+seurat$Mix <- Idents(seurat)
+```
+
+# Finish basic processing of seurat object
+## Normalize
+```{r}
+seurat <- NormalizeData(seurat)
+seurat <- FindVariableFeatures(seurat, selection.method="vst", nfeatures=3000)
+```
+
+## Cell cycle annotation
+```{r}
+cc.genes <- readLines(con = "~/Data/GeneLists/regev_lab_cell_cycle_genes.txt")
+#Split these genes into S markers and G2M markers
+s.genes <- cc.genes[1:43]
+g2m.genes <- cc.genes[44:97]
+```
+
+```{r}
+seurat <- CellCycleScoring(seurat, s.features = s.genes, 
+                           g2m.features = g2m.genes, set.ident = FALSE)
+```
+
+## Regress out technical factors
+```{r}
+seurat <- ScaleData(seurat, vars.to.regress=c("percent.mito", "nCount_RNA",
+                                              "S.Score", "G2M.Score"),
+                    features=VariableFeatures(seurat))
+```
+
+## Clustering and Dimensionality Reduction
+```{r}
+seurat <- RunPCA(seurat, verbose=F)
+seurat <- RunUMAP(seurat, dims = 1:20)
+```
+
+```{r}
+seurat <- FindNeighbors(seurat, dims=1:20)
+seurat <- FindClusters(seurat, resolution=0.05)
+```
+
+
+## Visualization
+
+```{r}
+DimPlot(seurat, reduction='umap', group.by="CellLine")
+DimPlot(seurat, reduction='umap', group.by="Treatment")
+DimPlot(seurat, reduction='umap', group.by="Doublet")
+DimPlot(seurat, reduction='umap', group.by="Phase")
+DimPlot(seurat, reduction='umap', group.by="Mix")
+DimPlot(seurat, reduction='umap')
+```
+
+
+
+```{r}
+saveRDS(seurat, file="../data/seurat_unfiltered.rds")
+```
+
+
+
+

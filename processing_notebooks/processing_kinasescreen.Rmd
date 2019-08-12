@@ -1,0 +1,1394 @@
+---
+title: "Processing: Kinase inhibitor data"
+output: html_notebook
+---
+
+# Goal
+The goal of this notebook is to 1) take the cellranger output for these samples and get them into Seurat objects, and 2) perform LMO counting for each sample and use that to annotate the cells in the seurat object
+
+# Dependencies
+```{r}
+library(Seurat)
+library(deMULTIplex)
+library(ggplot2)
+library(dplyr)
+```
+
+# Read in 10x data
+```{r}
+plate1_mat <- Read10X(data.dir = "../data/cellranger/Plate1/filtered_feature_bc_matrix/")
+plate2_mat <- Read10X(data.dir = "../data/cellranger/Plate2/filtered_feature_bc_matrix/")
+plate3_mat <- Read10X(data.dir = "../data/cellranger/Plate3/filtered_feature_bc_matrix/")
+plate4_mat <- Read10X(data.dir = "../data/cellranger/Plate4/filtered_feature_bc_matrix/")
+```
+
+```{r}
+plate1.cells <- data.frame(cell = colnames(plate1_mat))
+write.table(plate1.cells, "../data/Plate1_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+
+plate2.cells <- data.frame(cell = colnames(plate2_mat))
+write.table(plate2.cells, "../data/Plate2_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+
+plate3.cells <- data.frame(cell = colnames(plate3_mat))
+write.table(plate3.cells, "../data/Plate3_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+
+plate4.cells <- data.frame(cell = colnames(plate4_mat))
+write.table(plate4.cells, "../data/Plate4_cellIDs.txt", sep="\t", col.names=F, 
+            row.names=F, quote=F)
+```
+
+
+# Plate 1 QC nd Processing
+
+```{r}
+seurat <- CreateSeuratObject(plate1_mat, min.cells = round(0.01*ncol(plate1_mat)), 
+                             min.features = 200,
+                             project = "Plate1")
+```
+
+```{r}
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+hist(seurat$percent.mito, breaks=50)
+plot(seurat$percent.mito, seurat$nCount_RNA, pch=20)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.3)
+plate1_keep <- colnames(seurat)
+plate1_seurat <- seurat
+```
+
+
+# Plate 2 QC nd Processing
+
+```{r}
+seurat <- CreateSeuratObject(plate2_mat, min.cells = round(0.01*ncol(plate2_mat)), 
+                             min.features = 200,
+                             project = "Plate2")
+```
+
+```{r}
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+hist(seurat$percent.mito, breaks=50)
+plot(seurat$percent.mito, seurat$nCount_RNA, pch=20)
+```
+
+There's a decent number of cells with high percent.mito. This probably makes sense
+considering that some of these kinase inhibitors definitely affect cell health
+Super low RNA counts seem to be associated with >~0.3
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.3)
+plate2_keep <- colnames(seurat)
+plate2_seurat <- seurat
+```
+
+# Plate 3 QC nd Processing
+
+```{r}
+seurat <- CreateSeuratObject(plate3_mat, min.cells = round(0.01*ncol(plate3_mat)), 
+                             min.features = 200,
+                             project = "Plate3")
+```
+
+```{r}
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+hist(seurat$percent.mito, breaks=50)
+plot(seurat$percent.mito, seurat$nCount_RNA, pch=20)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.35)
+plate3_keep <- colnames(seurat)
+plate3_seurat <- seurat
+```
+
+## What the hell is up with some of these cells??
+
+```{r}
+seurat <- NormalizeData(seurat)
+seurat <- FindVariableFeatures(seurat)
+seurat <- ScaleData(seurat)
+```
+
+```{r}
+seurat <- RunPCA(seurat, verbose=F)
+ElbowPlot(seurat, ndims=50)
+```
+
+```{r}
+seurat <- RunUMAP(seurat, dims=1:30)
+```
+
+```{r}
+DimPlot(seurat)
+FeaturePlot(seurat, features=c("percent.mito", "nFeature_RNA"))
+```
+
+```{r}
+seurat <- FindNeighbors(seurat, dims=1:30)
+seurat <- FindClusters(seurat, resolution=0.05)
+```
+
+```{r}
+DimPlot(seurat)
+```
+
+```{r}
+t <- FindMarkers(seurat, ident.1 = 0, ident.2=1)
+```
+
+The cluster is not associated with any markers. The low UMI counts and low percent.mito
+is consistent with this population being droplets with ambient RNA. Just as dying cells begin to
+enrich for mitochrondrial reads, the content they release into their environment becomes depleted
+of mitochondrial content. This sample had lower viability than the rest. All signs suggest this population
+can be filtered safely
+
+```{r}
+cells_keep <- colnames(seurat)[which(Idents(seurat) != 0)]
+```
+
+## Re-process
+```{r}
+seurat <- CreateSeuratObject(plate3_mat[,cells_keep], min.cells = round(0.01*ncol(plate3_mat[,cells_keep])), 
+                             min.features = 200,
+                             project = "Plate3")
+```
+
+```{r}
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.35)
+plate3_keep <- colnames(seurat)
+plate3_seurat <- seurat
+```
+
+# Plate 4 QC nd Processing
+
+```{r}
+seurat <- CreateSeuratObject(plate4_mat, min.cells = round(0.01 * ncol(plate4_mat)), 
+                             min.features = 200,
+                             project = "Plate4")
+```
+
+```{r}
+mito.features <- grep(pattern = "^MT-", x = rownames(seurat), value = TRUE)
+percent.mito <- Matrix::colSums(GetAssayData(seurat, slot = 'counts')[mito.features, ]) / Matrix::colSums(GetAssayData(seurat, slot = 'counts'))
+
+# The [[ operator can add columns to object metadata, and is a great place to stash QC stats
+seurat[['percent.mito']] <- percent.mito
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), ncol = 3)
+```
+
+```{r}
+hist(seurat$percent.mito, breaks=50)
+plot(seurat$percent.mito, seurat$nCount_RNA, pch=20)
+```
+
+```{r}
+seurat <- subset(seurat, 
+                 subset = nFeature_RNA > 200 & 
+                   percent.mito < 0.4)
+plate4_keep <- colnames(seurat)
+plate4_seurat <- seurat
+```
+
+# Annotate cells based on LMOs
+
+```{r}
+bar.ref <- read.csv("../data/LMOlist.csv", stringsAsFactors = F,
+                    header=F)$V1
+```
+
+## Quantify LMO counts from barcode libraries
+
+```{r}
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Plate1-Barcode/Plate1-Barcode_R1_paired.fastq.gz",
+                                 R2 = "../fastq/Plate1-Barcode/Plate1-Barcode_R2_paired.fastq.gz",
+                                 cellIDs = plate1_keep,
+                                 cell=c(1,16),
+                                 umi=c(17,28),
+                                 tag=c(1,8))
+plate1_bar_table <- MULTIseq.align(readTable, plate1_keep, bar.ref)
+write.csv(plate1_bar_table, file="../data/Plate1_barcode_counts.csv", quote=F)
+
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Plate2-Barcode/Plate2-Barcode_R1_paired.fastq.gz",
+                                 R2 = "../fastq/Plate2-Barcode/Plate2-Barcode_R2_paired.fastq.gz",
+                                 cellIDs = plate2_keep,
+                                 cell=c(1,16),
+                                 umi=c(17,28),
+                                 tag=c(1,8))
+plate2_bar_table <- MULTIseq.align(readTable, plate2_keep, bar.ref)
+write.csv(plate2_bar_table, file="../data/Plate2_barcode_counts.csv", quote=F)
+
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Plate3-Barcode/Plate3-Barcode_R1_paired.fastq.gz",
+                                 R2 = "../fastq/Plate3-Barcode/Plate3-Barcode_R2_paired.fastq.gz",
+                                 cellIDs = plate3_keep,
+                                 cell=c(1,16),
+                                 umi=c(17,28),
+                                 tag=c(1,8))
+plate3_bar_table <- MULTIseq.align(readTable, plate3_keep, bar.ref)
+write.csv(plate3_bar_table, file="../data/Plate3_barcode_counts.csv", quote=F)
+
+readTable <- MULTIseq.preProcess(R1 = "../fastq/Plate4-Barcode/Plate4-Barcode_R1_paired.fastq.gz",
+                                 R2 = "../fastq/Plate4-Barcode/Plate4-Barcode_R2_paired.fastq.gz",
+                                 cellIDs = plate4_keep,
+                                 cell=c(1,16),
+                                 umi=c(17,28),
+                                 tag=c(1,8))
+plate4_bar_table <- MULTIseq.align(readTable, plate4_keep, bar.ref)
+write.csv(plate4_bar_table, file="../data/Plate4_barcode_counts.csv", quote=F)
+```
+
+```{r}
+plate1_bar_table <- read.csv("../data/Plate1_barcode_counts.csv", row.names=1)
+plate2_bar_table <- read.csv("../data/Plate2_barcode_counts.csv", row.names=1)
+plate3_bar_table <- read.csv("../data/Plate3_barcode_counts.csv", row.names=1)
+plate4_bar_table <- read.csv("../data/Plate4_barcode_counts.csv", row.names=1)
+```
+
+## Plate1
+```{r}
+plate1_tsne <- barTSNE(plate1_bar_table[,1:96])
+```
+
+```{r}
+plate1.temp <- plate1_bar_table
+plate1.temp$TSNE1 <- plate1_tsne$TSNE1
+plate1.temp$TSNE2 <- plate1_tsne$TSNE2
+write.csv(plate1.temp, file="../output/plate1_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(plate1_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- plate1_tsne$TSNE1
+temp$TSNE2 <- plate1_tsne$TSNE2
+
+
+for (LMO in colnames(plate1_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Plate1/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+plate1_remove <- c(28, 73, 75, 76, 77, 78, 79, 80) #73 is an odd one. Weak signal--no singlets, but overlaps with Bar83.
+```
+
+```{r}
+plate1_bar_filtered <- plate1_bar_table[,1:96]
+plate1_bar_filtered <- plate1_bar_filtered[,-plate1_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(plate1_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(plate1_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+plate1_bar_filtered <- plate1_bar_filtered[-which(rownames(plate1_bar_filtered) %in% neg.cells), ]
+```
+
+
+Note: With this multiplex run, I've tried the multiple rounds of classification, but
+the calls after Round 1 are quite good by inspection
+
+Let's quickly look at the TSNE with classifications
+```{r}
+plate1_tsne$Classification <- "Singlet"
+plate1_tsne$Classification[which(round1.calls[rownames(plate1_tsne)]=="Doublet")] <- "Doublet"
+plate1_tsne$Classification[which(round1.calls[rownames(plate1_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(plate1_tsne$Classification)
+```
+
+```{r}
+tsne_classification <- ggplot(plate1_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+### Negative reclassification
+```{r}
+plate1_bar_full <- plate1_bar_table[,1:96]
+plate1_bar_full <- plate1_bar_full[,-plate1_remove]
+reclass.cells <- findReclassCells(plate1_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells(barTable=plate1_bar_full, round1.calls[rownames(plate1_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1, ], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 7) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+plate1_tsne$Classification <- "Singlet"
+plate1_tsne$Classification[which(final.calls[rownames(plate1_tsne)]=="Doublet")] <- "Doublet"
+plate1_tsne$Classification[which(final.calls[rownames(plate1_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(plate1_tsne$Classification)
+```
+
+```{r}
+#What did reclassification retrieve?
+table(final.calls) - table(round1.calls)
+```
+
+```{r}
+tsne_classification <- ggplot(plate1_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, alpha=0.5, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Plate1_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+### Assess sample classifications on TSNE
+```{r}
+plate1.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- plate1_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(plate1_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Plate1/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(plate1.samples, plotSampleTSNE)
+```
+
+```{r}
+plate1_calls <- final.calls
+```
+
+## Plate2
+```{r}
+plate2_tsne <- barTSNE(plate2_bar_table[,1:96])
+```
+
+```{r}
+plate2.temp <- plate2_bar_table
+plate2.temp$TSNE1 <- plate2_tsne$TSNE1
+plate2.temp$TSNE2 <- plate2_tsne$TSNE2
+write.csv(plate2.temp, file="../output/plate2_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(plate2_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- plate2_tsne$TSNE1
+temp$TSNE2 <- plate2_tsne$TSNE2
+
+
+for (LMO in colnames(plate2_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Plate2/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+plate2_remove <- c(25, 41) 
+#25, 65, 17, 41, 43
+```
+
+```{r}
+plate2_bar_filtered <- plate2_bar_table[,1:96]
+plate2_bar_filtered <- plate2_bar_filtered[,-plate2_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(plate2_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(plate2_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+plate2_bar_filtered <- plate2_bar_filtered[-which(rownames(plate2_bar_filtered) %in% neg.cells), ]
+```
+
+
+Note: With this multiplex run, I've tried the multiple rounds of classification, but
+the calls after Round 1 are quite good by inspection
+
+Let's quickly look at the TSNE with classifications
+```{r}
+plate2_tsne$Classification <- "Singlet"
+plate2_tsne$Classification[which(round1.calls[rownames(plate2_tsne)]=="Doublet")] <- "Doublet"
+plate2_tsne$Classification[which(round1.calls[rownames(plate2_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(plate2_tsne$Classification)
+```
+
+```{r}
+tsne_classification <- ggplot(plate2_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+### Negative reclassification
+```{r}
+plate2_bar_full <- plate2_bar_table[,1:96]
+plate2_bar_full <- plate2_bar_full[,-plate2_remove]
+reclass.cells <- findReclassCells(plate2_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells(barTable=plate2_bar_full, round1.calls[rownames(plate2_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1, ], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 10) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+plate2_tsne$Classification <- "Singlet"
+plate2_tsne$Classification[which(final.calls[rownames(plate2_tsne)]=="Doublet")] <- "Doublet"
+plate2_tsne$Classification[which(final.calls[rownames(plate2_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(plate2_tsne$Classification)
+```
+
+```{r}
+#What did reclassification retrieve?
+table(final.calls) - table(round1.calls)
+```
+
+```{r}
+tsne_classification <- ggplot(plate2_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, alpha=0.5, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Plate2_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+### Assess sample classifications on TSNE
+```{r}
+plate2.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- plate2_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(plate2_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Plate2/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(plate2.samples, plotSampleTSNE)
+```
+
+```{r}
+plate2_calls <- final.calls
+```
+
+## Plate3
+```{r}
+plate3_tsne <- barTSNE(plate3_bar_table[,1:96])
+```
+
+```{r}
+plate3.temp <- plate3_bar_table
+plate3.temp$TSNE1 <- plate3_tsne$TSNE1
+plate3.temp$TSNE2 <- plate3_tsne$TSNE2
+write.csv(plate3.temp, file="../output/plate3_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(plate3_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- plate3_tsne$TSNE1
+temp$TSNE2 <- plate3_tsne$TSNE2
+
+
+for (LMO in colnames(plate3_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Plate3/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+plate3_remove <- c(28, 29, 30, 32, 76, 78) 
+#29, 78
+```
+
+```{r}
+plate3_bar_filtered <- plate3_bar_table[,1:96]
+plate3_bar_filtered <- plate3_bar_filtered[,-plate3_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(plate3_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(plate3_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+plate3_bar_filtered <- plate3_bar_filtered[-which(rownames(plate3_bar_filtered) %in% neg.cells), ]
+```
+
+```{r}
+plate3_tsne$Classification <- "Singlet"
+plate3_tsne$Classification[which(round1.calls[rownames(plate3_tsne)]=="Doublet")] <- "Doublet"
+plate3_tsne$Classification[which(round1.calls[rownames(plate3_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(plate3_tsne$Classification)
+```
+
+```{r}
+tsne_classification <- ggplot(plate3_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+### Negative reclassification
+```{r}
+#plate3_bar_full <- plate3_bar_table[,1:96]
+#plate3_bar_full <- plate3_bar_full[,-plate3_remove]
+#reclass.cells <- findReclassCells(plate3_bar_full,
+#                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+#reclass.res <- rescueCells(barTable=plate3_bar_full, round1.calls[rownames(plate3_bar_full)], reclass.cells)
+```
+I have no idea why this specific one isn't working?? it's the exact same code as the other plates. The negative
+counts are pretty low though, so I think I'll just keep it as is.
+
+```{r}
+#ggplot(reclass.res[-1, ], aes(x=ClassStability, y=MatchRate_mean)) + 
+#    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+#    ylim(c(0,1.05)) +
+#    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+#    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+#    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+#    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+#final.calls <- round1.calls
+#rescue.ind <- which(reclass.cells$ClassStability >= 14) ## Note: Value will be dataset-specific
+#final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+#plate3_tsne$Classification <- "Singlet"
+#plate3_tsne$Classification[which(final.calls[rownames(plate3_tsne)]=="Doublet")] <- "Doublet"
+#plate3_tsne$Classification[which(final.calls[rownames(plate3_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+#table(plate3_tsne$Classification)
+```
+
+```{r}
+#What did reclassification retrieve?
+#table(final.calls) - table(round1.calls)
+```
+
+```{r}
+tsne_classification <- ggplot(plate3_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, alpha=0.5, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Plate3_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+### Assess sample classifications on TSNE
+```{r}
+plate3.samples <- unique(round1.calls)
+plotSampleTSNE <- function(sample){
+  data <- plate3_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(plate3_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Plate3/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(plate3.samples, plotSampleTSNE)
+```
+
+```{r}
+plate3_calls <- round1.calls
+```
+
+
+## Plate4
+```{r}
+plate4_tsne <- barTSNE(plate4_bar_table[,1:96])
+```
+
+```{r}
+plate4.temp <- plate4_bar_table
+plate4.temp$TSNE1 <- plate4_tsne$TSNE1
+plate4.temp$TSNE2 <- plate4_tsne$TSNE2
+write.csv(plate4.temp, file="../output/plate4_barcode_tsne.csv", quote=F)
+```
+
+```{r}
+temp <- as.matrix(plate4_tsne[3:98])
+temp[temp<0] <- 0
+temp <- as.data.frame(temp)
+temp$TSNE1 <- plate4_tsne$TSNE1
+temp$TSNE2 <- plate4_tsne$TSNE2
+
+
+for (LMO in colnames(plate4_tsne)[3:98]){
+  png(filename = paste0("../figs/LMOs/Plate4/",LMO,".png"), width = 700, height = 600)
+  p <- ggplot(data=temp, aes_string(x="TSNE1",y="TSNE2",color=LMO)) + geom_point() +
+    scale_color_gradient(low="lightgrey",high="red") +
+    theme_void()
+  print(p)
+  dev.off()
+}
+```
+
+Filtering out bad barcodes
+```{r}
+plate4_remove <- c(48) 
+```
+
+```{r}
+plate4_bar_filtered <- plate4_bar_table[,1:96]
+plate4_bar_filtered <- plate4_bar_filtered[,-plate4_remove]
+```
+
+```{r}
+bar.table_sweep.list <- list()
+n <- 0
+for (q in seq(0.01, 0.99, by=0.02)) {
+  print(q)
+  n <- n + 1
+  bar.table_sweep.list[[n]] <- classifyCells(plate4_bar_filtered, q=q)
+  names(bar.table_sweep.list)[n] <- paste("q=",q,sep="")
+}
+```
+
+```{r}
+threshold.results1 <- findThresh(call.list=bar.table_sweep.list)
+ggplot(data=threshold.results1$res, aes(x=q, y=Proportion, color=Subset)) + geom_line() + theme(legend.position = "none") +
+  geom_vline(xintercept=threshold.results1$extrema, lty=2) + scale_color_manual(values=c("red","black","blue"))
+```
+
+```{r}
+## Finalize round 1 classifications, remove negative cells
+round1.calls <- classifyCells(plate4_bar_filtered, 
+                              q=findQ(threshold.results1$res, 
+                                      threshold.results1$extrema))
+neg.cells <- names(round1.calls)[which(round1.calls == "Negative")]
+plate4_bar_filtered <- plate4_bar_filtered[-which(rownames(plate4_bar_filtered) %in% neg.cells), ]
+```
+
+
+Note: With this multiplex run, I've tried the multiple rounds of classification, but
+the calls after Round 1 are quite good by inspection
+
+Let's quickly look at the TSNE with classifications
+```{r}
+plate4_tsne$Classification <- "Singlet"
+plate4_tsne$Classification[which(round1.calls[rownames(plate4_tsne)]=="Doublet")] <- "Doublet"
+plate4_tsne$Classification[which(round1.calls[rownames(plate4_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(plate4_tsne$Classification)
+```
+
+```{r}
+tsne_classification <- ggplot(plate4_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, aes(color=Classification)) +
+  theme_void()
+tsne_classification
+```
+
+### Negative reclassification
+```{r}
+plate4_bar_full <- plate4_bar_table[,1:96]
+plate4_bar_full <- plate4_bar_full[,-plate4_remove]
+reclass.cells <- findReclassCells(plate4_bar_full,
+                                  unique(names(round1.calls)[which(round1.calls=="Negative")]))
+reclass.res <- rescueCells(barTable=plate4_bar_full, round1.calls[rownames(plate4_bar_full)], reclass.cells)
+```
+
+```{r}
+ggplot(reclass.res[-1, ], aes(x=ClassStability, y=MatchRate_mean)) + 
+    geom_point() + xlim(c(nrow(reclass.res)-1,1)) + 
+    ylim(c(0,1.05)) +
+    geom_errorbar(aes(ymin=MatchRate_mean-MatchRate_sd, ymax=MatchRate_mean+MatchRate_sd), width=.1) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1], color="red") +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]+3*reclass.res$MatchRate_sd[1], color="red",lty=2) +
+    geom_hline(yintercept = reclass.res$MatchRate_mean[1]-3*reclass.res$MatchRate_sd[1], color="red",lty=2)
+```
+
+```{r}
+final.calls <- round1.calls
+rescue.ind <- which(reclass.cells$ClassStability >= 7) ## Note: Value will be dataset-specific
+final.calls[rownames(reclass.cells)[rescue.ind]] <- reclass.cells$Reclassification[rescue.ind]
+```
+
+Recheck tSNE
+```{r}
+plate4_tsne$Classification <- "Singlet"
+plate4_tsne$Classification[which(final.calls[rownames(plate4_tsne)]=="Doublet")] <- "Doublet"
+plate4_tsne$Classification[which(final.calls[rownames(plate4_tsne)]=="Negative")] <- "Negative"
+```
+
+```{r}
+table(plate4_tsne$Classification)
+```
+
+```{r}
+#What did reclassification retrieve?
+table(final.calls) - table(round1.calls)
+```
+
+```{r}
+tsne_classification <- ggplot(plate4_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.25, alpha=0.5, aes(color=Classification)) +
+  theme_void()
+ggsave(tsne_classification, file="../figs/LMOs/Plate4_tsne.png",
+       width=5.5, height=4)
+tsne_classification
+```
+
+### Assess sample classifications on TSNE
+```{r}
+plate4.samples <- unique(final.calls)
+plotSampleTSNE <- function(sample){
+  data <- plate4_tsne
+  data$Sample <- "Other"
+  data$Sample[which(final.calls[rownames(plate4_tsne)]==sample)] <- sample
+  sample_plot <- ggplot(data, aes(x=TSNE1, y=TSNE2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Sample)) +
+    scale_color_manual(values=c("red", "lightgrey")) +
+    theme_void()
+  ggsave(sample_plot, file=paste0("../figs/LMOs/Plate4/Classifications/", 
+         sample,".png"), width=5, height=3.2)
+}
+```
+
+```{r}
+lapply(plate4.samples, plotSampleTSNE)
+```
+
+```{r}
+plate4_calls <- final.calls
+```
+
+
+# Put together master annotation table
+```{r}
+drug_list <- read.csv("../docs/kinase_screen.csv", stringsAsFactors = F)
+```
+
+
+```{r}
+plate1_annotation <- data.frame(Barcode = colnames(plate1_bar_table)[1:96])
+plate1_annotation$Drug <- rep(drug_list$Drug, 4)
+plate1_annotation$Target <- rep(drug_list$Target, 4)
+plate1_annotation$CellLine <- "A549"
+plate1_annotation$Treatment <- rep(c("Untreated", "TGFB1", "EGF", "TNF"), each=24)
+
+plate3_annotation <- plate1_annotation
+plate3_annotation$CellLine <- "MCF7"
+plate3_annotation$Treatment <- rep(c("Untreated", "TGFB1", "EGF", "TNF"), each=24)
+
+plate2_annotation <- data.frame(Barcode = colnames(plate1_bar_table)[1:96])
+plate2_annotation$Drug <- rep(rev(drug_list$Drug), 4)
+plate2_annotation$Target <- rep(rev(drug_list$Target), 4)
+plate2_annotation$CellLine <- "DU145"
+plate2_annotation$Treatment <- rep(rev(c("Untreated", "TGFB1", "EGF", "TNF")), each=24)
+
+plate4_annotation <- plate2_annotation
+plate4_annotation$CellLine <- "OVCA420"
+plate4_annotation$Treatment <- rep(rev(c("Untreated", "TGFB1", "EGF", "TNF")), each=24)
+```
+
+
+# Adding annocations to seurat objects
+
+## Plate 1
+Make an classification table that we can dump into the seurat metadata
+```{r}
+plate1_classification <- data.frame(Barcode = plate1_calls)
+plate1_classification <- left_join(plate1_classification, plate1_annotation,
+                                    by="Barcode")
+plate1_seurat$Barcode <- plate1_classification$Barcode
+plate1_seurat$Drug <- plate1_classification$Drug
+plate1_seurat$Target <- plate1_classification$Target
+plate1_seurat$CellLine <- plate1_classification$CellLine
+plate1_seurat$Treatment <- plate1_classification$Treatment
+plate1_seurat$Doublet <- "Singlet"
+plate1_seurat$Doublet[which(plate1_calls == "Doublet")] <- "Doublet"
+plate1_seurat$Doublet[which(plate1_calls == "Negative")] <- "Negative"
+
+#Add a column about broad conditions (ie. inhibited, treated?)
+plate1_seurat$Condition <- paste0(plate1_seurat$Treatment, "_", plate1_seurat$Drug)
+plate1_seurat$DrugBroad <- "Inhibited"
+plate1_seurat$DrugBroad[which(plate1_seurat$Drug == "Control")] <- "Uninhibited"
+plate1_seurat$ConditionBroad <- paste0(plate1_seurat$Treatment, "_", plate1_seurat$DrugBroad)
+```
+### Normalzation 
+```{r}
+plate1_seurat <- NormalizeData(plate1_seurat)
+```
+
+### Cell Cycle Annotation
+```{r}
+cc.genes <- readLines(con = "~/Data/GeneLists/regev_lab_cell_cycle_genes.txt")
+#Split these genes into S markers and G2M markers
+s.genes <- cc.genes[1:43]
+g2m.genes <- cc.genes[44:97]
+```
+
+```{r}
+plate1_seurat <- CellCycleScoring(object = plate1_seurat, s.features = s.genes, 
+                        g2m.features = g2m.genes, set.ident = FALSE)
+```
+
+### Dimensionality Reduction
+
+
+```{r}
+plate1_seurat <- FindVariableFeatures(plate1_seurat, selection.method="vst",
+                                      nfeatures = 2000)
+plate1_seurat <- ScaleData(plate1_seurat, featuers=VariableFeatures(plate1_seurat),
+                           vars.to.regress=c("percent.mito", "nCount_RNA",
+                                             "G2M.Score", "S.Score"))
+plate1_seurat <- RunPCA(plate1_seurat, verbose=F, npcs = 50)
+ElbowPlot(plate1_seurat, ndims=50)
+```
+
+```{r}
+plate1_seurat <- RunUMAP(plate1_seurat, dims=1:30)
+```
+
+### Visualize
+
+```{r}
+DimPlot(plate1_seurat, group.by="Doublet")
+DimPlot(plate1_seurat, group.by="Phase")
+DimPlot(plate1_seurat, group.by="Treatment")
+DimPlot(plate1_seurat, group.by="DrugBroad")
+DimPlot(plate1_seurat, group.by="ConditionBroad")
+```
+
+```{r}
+plate1_seurat <- FindNeighbors(plate1_seurat, dims=1:30)
+plate1_seurat <- FindClusters(plate1_seurat, resolution=0.1)
+```
+
+```{r}
+DimPlot(plate1_seurat)
+```
+
+
+## Plate 2
+Make an classification table that we can dump into the seurat metadata
+```{r}
+plate2_classification <- data.frame(Barcode = plate2_calls)
+plate2_classification <- left_join(plate2_classification, plate2_annotation,
+                                    by="Barcode")
+plate2_seurat$Barcode <- plate2_classification$Barcode
+plate2_seurat$Drug <- plate2_classification$Drug
+plate2_seurat$Target <- plate2_classification$Target
+plate2_seurat$CellLine <- plate2_classification$CellLine
+plate2_seurat$Treatment <- plate2_classification$Treatment
+plate2_seurat$Doublet <- "Singlet"
+plate2_seurat$Doublet[which(plate2_calls == "Doublet")] <- "Doublet"
+plate2_seurat$Doublet[which(plate2_calls == "Negative")] <- "Negative"
+
+#Add a column about broad conditions (ie. inhibited, treated?)
+plate2_seurat$Condition <- paste0(plate2_seurat$Treatment, "_", plate2_seurat$Drug)
+plate2_seurat$DrugBroad <- "Inhibited"
+plate2_seurat$DrugBroad[which(plate2_seurat$Drug == "Control")] <- "Uninhibited"
+plate2_seurat$ConditionBroad <- paste0(plate2_seurat$Treatment, "_", plate2_seurat$DrugBroad)
+```
+
+### Normalization
+```{r}
+plate2_seurat <- NormalizeData(plate2_seurat)
+```
+
+
+### Cell Cycle Annotation
+```{r}
+cc.genes <- readLines(con = "~/Data/GeneLists/regev_lab_cell_cycle_genes.txt")
+#Split these genes into S markers and G2M markers
+s.genes <- cc.genes[1:43]
+g2m.genes <- cc.genes[44:97]
+```
+
+```{r}
+plate2_seurat <- CellCycleScoring(object = plate2_seurat, s.features = s.genes, 
+                        g2m.features = g2m.genes, set.ident = FALSE)
+```
+
+### Dimensionality Reduction
+```{r}
+plate2_seurat <- FindVariableFeatures(plate2_seurat, selection.method="vst",
+                                      nfeatures = 2000)
+plate2_seurat <- ScaleData(plate2_seurat, features=VariableFeatures(plate2_seurat),
+                           vars.to.regress=c("percent.mito", "nCount_RNA",
+                                             "S.Score", "G2M.Score"))
+plate2_seurat <- RunPCA(plate2_seurat, verbose=F)
+ElbowPlot(plate2_seurat, ndims=50)
+```
+
+```{r}
+plate2_seurat <- RunUMAP(plate2_seurat, dims=1:30)
+```
+
+### Visualize
+
+```{r}
+DimPlot(plate2_seurat, group.by="Doublet")
+DimPlot(plate2_seurat, group.by="Phase")
+DimPlot(plate2_seurat, group.by="Treatment")
+DimPlot(plate2_seurat, group.by="DrugBroad")
+DimPlot(plate2_seurat, group.by="ConditionBroad")
+```
+
+
+```{r}
+plate2_seurat <- FindNeighbors(plate2_seurat, dims=1:30)
+plate2_seurat <- FindClusters(plate2_seurat, resolution=0.1)
+```
+
+```{r}
+DimPlot(plate2_seurat)
+```
+
+## Plate 3
+Make an classification table that we can dump into the seurat metadata
+```{r}
+plate3_classification <- data.frame(Barcode = plate3_calls)
+plate3_classification <- left_join(plate3_classification, plate3_annotation,
+                                    by="Barcode")
+plate3_seurat$Barcode <- plate3_classification$Barcode
+plate3_seurat$Drug <- plate3_classification$Drug
+plate3_seurat$Target <- plate3_classification$Target
+plate3_seurat$CellLine <- plate3_classification$CellLine
+plate3_seurat$Treatment <- plate3_classification$Treatment
+plate3_seurat$Doublet <- "Singlet"
+plate3_seurat$Doublet[which(plate3_calls == "Doublet")] <- "Doublet"
+plate3_seurat$Doublet[which(plate3_calls == "Negative")] <- "Negative"
+
+#Add a column about broad conditions (ie. inhibited, treated?)
+plate3_seurat$Condition <- paste0(plate3_seurat$Treatment, "_", plate3_seurat$Drug)
+plate3_seurat$DrugBroad <- "Inhibited"
+plate3_seurat$DrugBroad[which(plate3_seurat$Drug == "Control")] <- "Uninhibited"
+plate3_seurat$ConditionBroad <- paste0(plate3_seurat$Treatment, "_", plate3_seurat$DrugBroad)
+```
+
+### Normalization
+```{r}
+plate3_seurat <- NormalizeData(plate3_seurat)
+```
+
+### Cell Cycle Annotation
+```{r}
+cc.genes <- readLines(con = "~/Data/GeneLists/regev_lab_cell_cycle_genes.txt")
+#Split these genes into S markers and G2M markers
+s.genes <- cc.genes[1:43]
+g2m.genes <- cc.genes[44:97]
+```
+
+```{r}
+plate3_seurat <- CellCycleScoring(object = plate3_seurat, s.features = s.genes, 
+                        g2m.features = g2m.genes, set.ident = FALSE)
+```
+
+### Dimensionality Reduction
+```{r}
+plate3_seurat <- FindVariableFeatures(plate3_seurat, selection.method="vst",
+                                      nfeatures=2000)
+plate3_seurat <- ScaleData(plate3_seurat, features=VariableFeatures(plate3_seurat),
+                           vars.to.regress = c("percent.mito", "nCount_RNA",
+                                               "S.Score", "G2M.Score"))
+plate3_seurat <- RunPCA(plate3_seurat, verbose=F)
+ElbowPlot(plate3_seurat, ndims=50)
+```
+
+```{r}
+plate3_seurat <- RunUMAP(plate3_seurat, dims=1:30)
+```
+
+### Visualize
+
+```{r}
+DimPlot(plate3_seurat, group.by="Doublet")
+DimPlot(plate3_seurat, group.by="Phase")
+DimPlot(plate3_seurat, group.by="Treatment")
+DimPlot(plate3_seurat, group.by="DrugBroad")
+DimPlot(plate3_seurat, group.by="ConditionBroad")
+```
+
+
+```{r}
+plate3_seurat <- FindNeighbors(plate3_seurat, dims=1:30)
+plate3_seurat <- FindClusters(plate3_seurat, resolution=0.1)
+```
+
+```{r}
+DimPlot(plate3_seurat)
+```
+
+## Plate 4
+Make an classification table that we can dump into the seurat metadata
+```{r}
+plate4_classification <- data.frame(Barcode = plate4_calls)
+plate4_classification <- left_join(plate4_classification, plate4_annotation,
+                                    by="Barcode")
+plate4_seurat$Barcode <- plate4_classification$Barcode
+plate4_seurat$Drug <- plate4_classification$Drug
+plate4_seurat$Target <- plate4_classification$Target
+plate4_seurat$CellLine <- plate4_classification$CellLine
+plate4_seurat$Treatment <- plate4_classification$Treatment
+plate4_seurat$Doublet <- "Singlet"
+plate4_seurat$Doublet[which(plate4_calls == "Doublet")] <- "Doublet"
+plate4_seurat$Doublet[which(plate4_calls == "Negative")] <- "Negative"
+
+#Add a column about broad conditions (ie. inhibited, treated?)
+plate4_seurat$Condition <- paste0(plate4_seurat$Treatment, "_", plate4_seurat$Drug)
+plate4_seurat$DrugBroad <- "Inhibited"
+plate4_seurat$DrugBroad[which(plate4_seurat$Drug == "Control")] <- "Uninhibited"
+plate4_seurat$ConditionBroad <- paste0(plate4_seurat$Treatment, "_", plate4_seurat$DrugBroad)
+```
+
+### Normalize Data
+```{r}
+plate4_seurat <- NormalizeData(plate4_seurat)
+```
+
+### Cell Cycle Annotation
+```{r}
+cc.genes <- readLines(con = "~/Data/GeneLists/regev_lab_cell_cycle_genes.txt")
+#Split these genes into S markers and G2M markers
+s.genes <- cc.genes[1:43]
+g2m.genes <- cc.genes[44:97]
+```
+
+```{r}
+plate4_seurat <- CellCycleScoring(object = plate4_seurat, s.features = s.genes, 
+                        g2m.features = g2m.genes, set.ident = FALSE)
+```
+
+### Dimensionality Reduction
+```{r}
+plate4_seurat <- FindVariableFeatures(plate4_seurat, selection.method="vst",
+                                      nfeatures=2000)
+plate4_seurat <- ScaleData(plate4_seurat, features=VariableFeatures(plate4_seurat),
+                           vars.to.regress=c("percent.mito", "nCount_RNA",
+                                             "S.Score", "G2M.Score"))
+plate4_seurat <- RunPCA(plate4_seurat, verbose=F)
+ElbowPlot(plate4_seurat, ndims=50)
+```
+
+```{r}
+plate4_seurat <- RunUMAP(plate4_seurat, dims=1:30)
+```
+
+### Visualization
+
+```{r}
+DimPlot(plate4_seurat, group.by="Doublet")
+DimPlot(plate4_seurat, group.by="Phase")
+DimPlot(plate4_seurat, group.by="Treatment")
+DimPlot(plate4_seurat, group.by="DrugBroad")
+DimPlot(plate4_seurat, group.by="ConditionBroad")
+```
+
+```{r}
+plate4_seurat <- FindNeighbors(plate4_seurat, dims=1:30)
+plate4_seurat <- FindClusters(plate4_seurat, resolution=0.3)
+```
+
+```{r}
+DimPlot(plate4_seurat, label=T)
+```
+
+```{r}
+ncol(plate4_seurat)
+```
+
+
+### Remove unresponsive OVCA420 cells
+```{r}
+plate4_seurat <- subset(plate4_seurat, idents=c(0,3,4))
+plate4_seurat <- FindVariableFeatures(plate4_seurat, selection.method = "vst",
+                                      nfeatures=2000)
+plate4_seurat <- ScaleData(plate4_seurat, features=VariableFeatures(plate4_seurat),
+                           vars.to.regress=c("percent.mito", "nCount_RNA",
+                                             "S.Score", "G2M.Score"))
+plate4_seurat <- RunPCA(plate4_seurat, verbose=F)
+plate4_seurat <- RunUMAP(plate4_seurat, dims=1:30)
+plate4_seurat <- FindNeighbors(plate4_seurat, dims=1:30)
+plate4_seurat <- FindClusters(plate4_seurat, resolution=0.2)
+```
+
+```{r}
+DimPlot(plate4_seurat)
+DimPlot(plate4_seurat, group.by="Doublet")
+DimPlot(plate4_seurat, group.by="Phase")
+DimPlot(plate4_seurat, group.by="Treatment")
+DimPlot(plate4_seurat, group.by="DrugBroad")
+DimPlot(plate4_seurat, group.by="ConditionBroad")
+```
+
+Cluster 3 is pretty clearly residual doublets/contaminants of the unresponsive population
+```{r}
+plate4_seurat <- subset(plate4_seurat, idents=c(0,1,2,4,5))
+plate4_seurat <- FindVariableFeatures(plate4_seurat, selection.method = "vst",
+                                      nfeatures=2000)
+plate4_seurat <- ScaleData(plate4_seurat, features=VariableFeatures(plate4_seurat),
+                           vars.to.regress=c("percent.mito", "nCount_RNA",
+                                             "S.Score", "G2M.Score"))
+plate4_seurat <- RunPCA(plate4_seurat, verbose=F)
+plate4_seurat <- RunUMAP(plate4_seurat, dims=1:30)
+plate4_seurat <- FindNeighbors(plate4_seurat, dims=1:30)
+plate4_seurat <- FindClusters(plate4_seurat, resolution=0.2)
+```
+
+```{r}
+DimPlot(plate4_seurat)
+DimPlot(plate4_seurat, group.by="Doublet")
+DimPlot(plate4_seurat, group.by="Phase")
+DimPlot(plate4_seurat, group.by="Treatment")
+DimPlot(plate4_seurat, group.by="DrugBroad")
+DimPlot(plate4_seurat, group.by="ConditionBroad")
+```
+
+# Save RDS files
+
+```{r}
+saveRDS(plate1_seurat, file="../data/A549_kinase.rds")
+saveRDS(plate2_seurat, file="../data/DU145_kinase.rds")
+saveRDS(plate3_seurat, file="../data/MCF7_kinase.rds")
+saveRDS(plate4_seurat, file="../data/OVCA420_kinase.rds")
+```
+
+## Sample Counts
+NOTE: RE-WRITE THIS TO RUN FROM THE SEURAT OBJECTS THEMSELVES. NUMBERS HAVE CHANGED WITH FILTERING
+```{r}
+plate1_annotation$Count <- as.numeric(table(plate1_seurat$Barcode)[as.character(plate1_annotation$Barcode)])
+plate1_annotation$Count[is.na(plate1_annotation$Count)] <- 0
+
+plate2_annotation$Count <- as.numeric(table(plate2_seurat$Barcode)[as.character(plate2_annotation$Barcode)])
+plate2_annotation$Count[is.na(plate2_annotation$Count)] <- 0
+
+plate3_annotation$Count <- as.numeric(table(plate3_seurat$Barcode)[as.character(plate3_annotation$Barcode)])
+plate3_annotation$Count[is.na(plate3_annotation$Count)] <- 0
+
+plate4_annotation$Count <- as.numeric(table(plate4_seurat$Barcode)[as.character(plate4_annotation$Barcode)])
+plate4_annotation$Count[is.na(plate4_annotation$Count)] <- 0
+```
+
+```{r}
+sample_counts <- data.frame(Inhibitor = as.character(plate1_annotation$Drug)[1:24],
+                            A549_Untreated = plate1_annotation$Count[1:24],
+                            A549_TGFB1 = plate1_annotation$Count[25:48],
+                            A549_EGF = plate1_annotation$Count[49:72],
+                            A549_TNF = plate1_annotation$Count[73:96],
+                            DU145_Untreated = rev(plate2_annotation$Count[73:96]),
+                            DU145_TGFB1 = rev(plate2_annotation$Count[49:72]),
+                            DU145_EGF = rev(plate2_annotation$Count[25:48]),
+                            DU145_TNF = rev(plate2_annotation$Count[1:24]),
+                            MCF7_Untreated = plate3_annotation$Count[1:24],
+                            MCF7_TGFB1 = plate3_annotation$Count[25:48],
+                            MCF7_EGF = plate3_annotation$Count[49:72],
+                            MCF7_TNF = plate3_annotation$Count[73:96],
+                            OVCA420_Untreated = rev(plate4_annotation$Count[73:96]),
+                            OVCA420_TGFB1 = rev(plate4_annotation$Count[49:72]),
+                            OVCA420_EGF = rev(plate4_annotation$Count[25:48]),
+                            OVCA420_TNF = rev(plate4_annotation$Count[1:24]))
+sample_counts$Inhibitor <- as.character(sample_counts$Inhibitor)
+write.csv(sample_counts, file="../output/kinase_inhibitor_sample_counts.csv", row.names=F)
+```
+
+```{r}
+library(pheatmap)
+sample_counts_capped <- sample_counts
+sample_counts_capped$Inhibitor[10] <- "Control_1"
+sample_counts_capped$Inhibitor[24] <- "Control_2"
+rownames(sample_counts_capped) <- sample_counts_capped$Inhibitor
+sample_counts_capped$Inhibitor <- NULL
+sample_counts_capped <- as.matrix(sample_counts_capped)
+sample_counts_capped[sample_counts_capped>200] <- 200
+
+sample_count_heatmap <- pheatmap(t(sample_counts_capped),
+                                 color=viridis::magma(100),
+                                 cluster_rows=F,
+                                 cluster_cols=F,
+                                 show_rownames=T,
+                                 show_colnames=T,
+                                 display_numbers=T,
+                                 border_color="black",
+                                 number_form="%.0f",
+                                 number_color="grey50",
+                                 file="../figs/kinase_screen_counts.png",
+                                 width=8, height=6.25)
+```
+

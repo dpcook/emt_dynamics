@@ -1,0 +1,188 @@
+---
+title: "ATAC-chromVar"
+output: html_notebook
+---
+
+#Dependencies
+```{r}
+library(chromVAR)
+library(chromVARmotifs)
+library(motifmatchr)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(Matrix)
+library(SummarizedExperiment)
+library(BiocParallel)
+set.seed(2017)
+```
+
+#Fixing peak size
+It is advised to use fixed peak sizes to avoid biases that may come from standard, variably-sized peaks. Apparently chromVAR is quite robust to changes, but 250-500bp is recommended. We'll make 250bp peaks, centred around peak summits
+
+First, we'll combine the peak summit files from all samples
+```{bash}
+cat ../data/ATAC/Ctrl-1/peakSummits/Ctrl-1.ATAC_summits.bed \
+../data/ATAC/Ctrl-2/peakSummits/Ctrl-2.ATAC_summits.bed \
+../data/ATAC/Tgfb1d-1/peakSummits/Tgfb1d-1.ATAC_summits.bed \
+../data/ATAC/Tgfb1d-2/peakSummits/Tgfb1d-2.ATAC_summits.bed \
+../data/ATAC/Tgfb3d-1/peakSummits/Tgfb3d-1.ATAC_summits.bed \
+../data/ATAC/Tgfb3d-2/peakSummits/Tgfb3d-2.ATAC_summits.bed \
+../data/ATAC/Tgfb7d-1/peakSummits/Tgfb7d-1.ATAC_summits.bed \
+../data/ATAC/Tgfb7d-2/peakSummits/Tgfb7d-2.ATAC_summits.bed > ../data/ATAC/ATAC.combined.peaks.bed
+```
+
+##Expand summits
+We'll expand the peak summits to a 250bp window
+```{r}
+options(scipen=999) #Prevents exponential notation (ie. E-x)
+peaks <- read.delim(file="../data/ATAC/ATAC.combined.peaks.bed", sep="\t", header=F)
+peaks$V2 <- peaks$V2 - 125
+peaks$V3 <- peaks$V3 + 124
+peaks[1,3] - peaks[1,2]
+```
+
+```{r}
+write.table(peaks, file="../data/ATAC/ATAC.combined.peaks.250bp.bed", sep="\t", col.names=F, row.names=F, quote=F)
+options(scipen=0)
+```
+
+#Import into chromVAR
+
+##Setting up multicore processing
+They recommend explicitly setting this, even if it's only one core
+```{r}
+register(MulticoreParam(2, progressbar = TRUE))
+```
+
+##Peak file
+```{r}
+peaks <- getPeaks("../data/ATAC/ATAC.combined.peaks.250bp.bed", sort_peaks=T)
+```
+Overlaps will be dealt with in a filtering step later.
+
+##Counts
+Now we import the counts from the bam files (and appropriate metadata)
+```{r}
+bam.files <- c("../data/ATAC/Ctrl-1/Ctrl-1.ATAC.ppmaq.nd.bam",
+               "../data/ATAC/Ctrl-2/Ctrl-2.ATAC.ppmaq.nd.bam",
+               "../data/ATAC/Tgfb1d-1/Tgfb1d-1.ATAC.ppmaq.nd.bam",
+               "../data/ATAC/Tgfb1d-2/Tgfb1d-2.ATAC.ppmaq.nd.bam",
+               "../data/ATAC/Tgfb3d-1/Tgfb3d-1.ATAC.ppmaq.nd.bam",
+               "../data/ATAC/Tgfb3d-2/Tgfb3d-2.ATAC.ppmaq.nd.bam",
+               "../data/ATAC/Tgfb7d-1/Tgfb7d-1.ATAC.ppmaq.nd.bam",
+               "../data/ATAC/Tgfb7d-2/Tgfb7d-2.ATAC.ppmaq.nd.bam")
+bam.meta <- data.frame(celltype=c("Ctrl", "Ctrl", "TGFB_1d", "TGFB_1d",
+                                  "TGFB_3d", "TGFB_3d", "TGFB_7d", "TGFB_7d"))
+fragment_counts <- getCounts(bam.files,
+                             peaks,
+                             paired=T,
+                             colData=bam.meta)
+```
+
+##Adding GC content
+```{r}
+fragment_counts <- addGCBias(fragment_counts,
+                             genome=BSgenome.Hsapiens.UCSC.hg38)
+head(rowData(fragment_counts))
+```
+
+##Filtering peaks
+Removing overlapping peaks (there are a ton because of merging peaks from each sample)
+```{r}
+counts_filtered <- filterPeaks(fragment_counts, non_overlapping=T) 
+#ix_return option can simply return the peak indexes of the ones that pass filter
+```
+
+#Get Motifs
+```{r}
+#motifs <- getJasparMotifs() #note: human motif defaults. ~380 motifs
+#data("human_pwms_v1") #over 1800 motifs. ~800 unique genes
+data("human_pwms_v2") #870 motifs--a curate list from v1 to reduce redundancy
+```
+
+Now we'll use motifmatchr to find which motifs are contained in each peak. It apparently outputs some valuable info, like number of motif matches per peak, motif score, etc
+
+```{r}
+motif_ix <- matchMotifs(human_pwms_v2, counts_filtered,
+                        genome=BSgenome.Hsapiens.UCSC.hg38,
+                        p.cutoff=5e-05,
+                        out="scores")
+```
+
+
+#Compute deviations
+```{r}
+dev <- computeDeviations(object=counts_filtered,
+                         annotations=motif_ix)
+```
+
+#Compute variability
+```{r}
+variability <- computeVariability(dev)
+```
+
+```{r}
+plotVariability(variability, n=10, use_plotly = FALSE)
+```
+
+#Differential accessibility
+```{r}
+diff_acc <- differentialDeviations(dev, "celltype")
+diff_acc$tf <- rownames(diff_acc)
+```
+
+Set up gene symbols for motifs
+```{r}
+tf <- ""
+for(i in 1:length(human_pwms_v2)){
+  tf <- c(tf, human_pwms_v2@listData[[i]]@name)
+}
+tf <- tf[-1]
+diff_acc$gene_symbol <- tf
+length(unique(tf))
+```
+
+#Plot accessibility differences
+```{r}
+dev.mat <- assays(dev)$deviations
+dev.mat <- t(scale(t(dev.mat), scale=T, center=T))
+dev.mat <- dev.mat[which(diff_acc$p_value_adjusted <= 0.05),]
+colnames(dev.mat) <- c("Ctrl_1", "Ctrl_2", "TGFB1_1d_1", "TGFB1_1d_2",
+                       "TGFB1_3d_1", "TGFB1_3d_2", "TGFB1_7d_1", "TGFB1_7d_2")
+rownames(dev.mat) <- tf[rownames(dev.mat)]
+
+write.csv(dev.mat, file = "../output/ATAC_differential_accessibility.csv")
+
+motif.heatmap <- pheatmap(dev.mat,
+                    color=viridis::viridis(100),
+                    scale="none",
+                    cluster_rows=T,
+                    clustering_method = "ward.D2",
+                    cutree_rows=6,
+                    treeheight_row = 0,
+                    cluster_cols=F,
+                    show_rownames=F,
+                    filename = "../figs/ATAC_diff_accessibility.png",
+                    width=2.25, height=6)
+```
+
+## Get cluster information
+```{r}
+clusters <- as.data.frame(cutree(motif.heatmap$tree_row, k=6))
+colnames(clusters) <- "Cluster"
+clusters$Gene <- rownames(clusters)
+```
+
+Order of clusters from top to bottom
+```{r}
+unique(clusters$Cluster[motif.heatmap$tree_row$order])
+```
+
+
+```{r}
+write.csv(clusters, file = "../output/ATAC_DiffAccessibility_Clusters.csv",
+          row.names=F)
+```
+
+
+
+

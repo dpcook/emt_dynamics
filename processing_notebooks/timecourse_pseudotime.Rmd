@@ -1,0 +1,1157 @@
+---
+title: "EMT Timecourse: Pseudotime with psupertime"
+output: html_notebook
+---
+
+# Goal
+Psupertime is a trajectory inference tool that uses scRNA-seq with some ordinal label
+
+We'll use it on each of our 12 time course data sets (without the withdrawal samples)
+
+# Dependencies
+```{r}
+library(psupertime)
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+```
+
+# Load the data
+
+```{r}
+a549_egf <- readRDS("../data/A549_EGF.rds")
+a549_tnf <- readRDS("../data/A549_TNF.rds")
+a549_tgfb1 <- readRDS("../data/A549_TGFB1.rds")
+
+du145_egf <- readRDS("../data/DU145_EGF.rds")
+du145_tnf <- readRDS("../data/DU145_TNF.rds")
+du145_tgfb1 <- readRDS("../data/DU145_TGFB1.rds")
+
+mcf7_egf <- readRDS("../data/MCF7_EGF.rds")
+mcf7_tnf <- readRDS("../data/MCF7_TNF.rds")
+mcf7_tgfb1 <- readRDS("../data/MCF7_TGFB1.rds")
+
+ovca420_egf <- readRDS("../data/OVCA420_EGF.rds")
+ovca420_tnf <- readRDS("../data/OVCA420_TNF.rds")
+ovca420_tgfb1 <- readRDS("../data/OVCA420_TGFB1.rds")
+```
+
+# Function for pseudotime
+
+```{r}
+getPseudotime <- function(seurat_object){
+  cells_keep <- colnames(seurat_object)[seurat_object$Time %in% c("0d", "8h", "1d",
+                                                                  "3d", "7d")]
+  seurat_object <- subset(seurat_object, cells=cells_keep)
+  
+  #log-transformed matrix
+  exp <- as.matrix(seurat_object[["RNA"]]@data) 
+  exp <- exp[VariableFeatures(seurat_object),]
+  
+  #factor of ordered labels
+  timepoints <- seurat_object$Time
+  timepoints <- factor(timepoints, levels=c("0d", "8h", "1d", "3d", "7d"))
+  
+  #psupertime
+  psuper_obj <- psupertime(exp, timepoints, sel_genes="all", smooth=T,
+                           penalization="best", min_expression=0)
+}
+```
+
+```{r}
+a549_tgfb1_psuper <- getPseudotime(a549_tgfb1)
+a549_egf_psuper <- getPseudotime(a549_egf)
+a549_tnf_psuper <- getPseudotime(a549_tnf)
+
+du145_tgfb1_psuper <- getPseudotime(du145_tgfb1)
+du145_egf_psuper <- getPseudotime(du145_egf)
+du145_tnf_psuper <- getPseudotime(du145_tnf)
+
+mcf7_tgfb1_psuper <- getPseudotime(mcf7_tgfb1)
+mcf7_egf_psuper <- getPseudotime(mcf7_egf)
+mcf7_tnf_psuper <- getPseudotime(mcf7_tnf)
+
+ovca420_tgfb1_psuper <- getPseudotime(ovca420_tgfb1)
+ovca420_egf_psuper <- getPseudotime(ovca420_egf)
+ovca420_tnf_psuper <- getPseudotime(ovca420_tnf)
+```
+
+```{r}
+a549_tgfb1_psuper
+a549_egf_psuper
+a549_tnf_psuper
+du145_tgfb1_psuper
+du145_egf_psuper
+du145_tnf_psuper
+mcf7_tgfb1_psuper
+mcf7_egf_psuper
+mcf7_tnf_psuper
+ovca420_tgfb1_psuper
+ovca420_egf_psuper
+ovca420_tnf_psuper
+```
+
+```{r}
+plot_labels_over_psupertime(a549_tgfb1_psuper, label_name='A549_TGFB1')
+plot_labels_over_psupertime(a549_egf_psuper, label_name='A549_EGF')
+plot_labels_over_psupertime(a549_tnf_psuper, label_name='A549_TNF')
+
+plot_labels_over_psupertime(du145_tgfb1_psuper, label_name='DU145_TGFB1')
+plot_labels_over_psupertime(du145_egf_psuper, label_name='DU145_EGF')
+plot_labels_over_psupertime(du145_tnf_psuper, label_name='DU145_TNF')
+
+plot_labels_over_psupertime(mcf7_tgfb1_psuper, label_name='MCF7_TGFB1')
+plot_labels_over_psupertime(mcf7_egf_psuper, label_name='MCF7_EGF')
+plot_labels_over_psupertime(mcf7_tnf_psuper, label_name='MCF7_TNF')
+
+plot_labels_over_psupertime(ovca420_tgfb1_psuper, label_name='OVCA420_TGFB1')
+plot_labels_over_psupertime(ovca420_egf_psuper, label_name='OVCA420_EGF')
+plot_labels_over_psupertime(ovca420_tnf_psuper, label_name='OVCA420_TNF')
+```
+
+```{r}
+saveRDS(a549_tgfb1_psuper, file = "../output/pseudotime/a549_tgfb1_psuper.rds")
+saveRDS(a549_egf_psuper, file = "../output/pseudotime/a549_egf_psuper.rds")
+saveRDS(a549_tnf_psuper, file = "../output/pseudotime/a549_tnf_psuper.rds")
+
+saveRDS(du145_tgfb1_psuper, file = "../output/pseudotime/du145_tgfb1_psuper.rds")
+saveRDS(du145_egf_psuper, file = "../output/pseudotime/du145_egf_psuper.rds")
+saveRDS(du145_tnf_psuper, file = "../output/pseudotime/du145_tnf_psuper.rds")
+
+saveRDS(mcf7_tgfb1_psuper, file = "../output/pseudotime/mcf7_tgfb1_psuper.rds")
+saveRDS(mcf7_egf_psuper, file = "../output/pseudotime/mcf7_egf_psuper.rds")
+saveRDS(mcf7_tnf_psuper, file = "../output/pseudotime/mcf7_tnf_psuper.rds")
+
+saveRDS(ovca420_tgfb1_psuper, file = "../output/pseudotime/ovca420_tgfb1_psuper.rds")
+saveRDS(ovca420_egf_psuper, file = "../output/pseudotime/ovca420_egf_psuper.rds")
+saveRDS(ovca420_tnf_psuper, file = "../output/pseudotime/ovca420_tnf_psuper.rds")
+```
+
+If you need to read them in
+
+```{r}
+a549_tgfb1_psuper <- readRDS("../output/pseudotime/a549_tgfb1_psuper.rds")
+a549_egf_psuper <- readRDS("../output/pseudotime/a549_egf_psuper.rds")
+a549_tnf_psuper <- readRDS("../output/pseudotime/a549_tnf_psuper.rds")
+
+du145_tgfb1_psuper <- readRDS("../output/pseudotime/du145_tgfb1_psuper.rds")
+du145_egf_psuper <- readRDS("../output/pseudotime/du145_egf_psuper.rds")
+du145_tnf_psuper <- readRDS("../output/pseudotime/du145_tnf_psuper.rds")
+
+mcf7_tgfb1_psuper <- readRDS("../output/pseudotime/mcf7_tgfb1_psuper.rds")
+mcf7_egf_psuper <- readRDS("../output/pseudotime/mcf7_egf_psuper.rds")
+mcf7_tnf_psuper <- readRDS("../output/pseudotime/mcf7_tnf_psuper.rds")
+
+ovca420_tgfb1_psuper <- readRDS("../output/pseudotime/ovca420_tgfb1_psuper.rds")
+ovca420_egf_psuper <- readRDS("../output/pseudotime/ovca420_egf_psuper.rds")
+ovca420_tnf_psuper <- readRDS("../output/pseudotime/ovca420_tnf_psuper.rds")
+```
+
+
+# Plot top genes from psupertime
+```{r}
+plot_identified_genes_over_psupertime(a549_tgfb1_psuper, label_name='A549_TGFB1')
+plot_identified_genes_over_psupertime(a549_egf_psuper, label_name='A549_EGF')
+plot_identified_genes_over_psupertime(a549_tnf_psuper, label_name='A549_TNF')
+
+plot_identified_genes_over_psupertime(du145_tgfb1_psuper, label_name='DU145_TGFB1')
+plot_identified_genes_over_psupertime(du145_egf_psuper, label_name='DU145_EGF')
+plot_identified_genes_over_psupertime(du145_tnf_psuper, label_name='DU145_TNF')
+
+plot_identified_genes_over_psupertime(mcf7_tgfb1_psuper, label_name='MCF7_TGFB1')
+plot_identified_genes_over_psupertime(mcf7_egf_psuper, label_name='MCF7_EGF')
+plot_identified_genes_over_psupertime(mcf7_tnf_psuper, label_name='MCF7_TNF')
+
+plot_identified_genes_over_psupertime(du145_tgfb1_psuper, label_name='OVCA420_TGFB1')
+plot_identified_genes_over_psupertime(du145_egf_psuper, label_name='OVCA420_EGF')
+plot_identified_genes_over_psupertime(du145_tnf_psuper, label_name='OVCA420_TNF')
+```
+
+# Plot pseudotime values on UMAP embeddings
+Not sure if I have a need for this, but it makes a new embeeding with only treated samples
+```{r}
+plotPseudotime <- function(seurat_object, psuper_object, file_dir){
+  cells_keep <- colnames(seurat_object)[seurat_object$Time %in% c("0d", "8h", "1d",
+                                                                  "3d", "7d")]
+  seurat_object <- subset(seurat_object, cells=cells_keep)
+  data <- seurat_object@meta.data
+  data$UMAP1 <- Embeddings(seurat_object, 'umap')[,1]
+  data$UMAP2 <- Embeddings(seurat_object, 'umap')[,2]
+  data$Pseudotime <- psuper_object$proj_dt$psuper
+  
+  data_plot <- ggplot(data, aes(x=UMAP1, y=UMAP2)) +
+    geom_point(size=1.5, alpha=0.75, aes(color=Pseudotime)) +
+    scale_color_viridis(option="A") +
+    #stat_summary_hex(aes(z=Pseudotime), bins=10) +
+    #scale_fill_viridis(option="A", name="Pseudotime") +
+    theme_void() +
+    theme(legend.key.size = unit(0.5, "cm"))
+  ggsave(data_plot, file=paste0("../figs/",file_dir,"/",file_dir,"_pseudotime_UMAP.png"),
+         width=4.75, height=3)
+  data_plot
+}
+```
+
+```{r}
+plotPseudotime(a549_tgfb1, a549_tgfb1_psuper, "A549_TGFB1")
+plotPseudotime(a549_egf, a549_egf_psuper, "A549_EGF")
+plotPseudotime(a549_tnf, a549_tnf_psuper, "A549_TNF")
+
+plotPseudotime(du145_tgfb1, du145_tgfb1_psuper, "DU145_TGFB1")
+plotPseudotime(du145_egf, du145_egf_psuper, "DU145_EGF")
+plotPseudotime(du145_tnf, du145_tnf_psuper, "DU145_TNF")
+
+plotPseudotime(mcf7_tgfb1, mcf7_tgfb1_psuper, "MCF7_TGFB1")
+plotPseudotime(mcf7_egf, mcf7_egf_psuper, "MCF7_EGF")
+plotPseudotime(mcf7_tnf, mcf7_tnf_psuper, "MCF7_TNF")
+
+plotPseudotime(ovca420_tgfb1, ovca420_tgfb1_psuper, "OVCA420_TGFB1")
+plotPseudotime(ovca420_egf, ovca420_egf_psuper, "OVCA420_EGF")
+plotPseudotime(ovca420_tnf, ovca420_tnf_psuper, "OVCA420_TNF")
+```
+
+# Re-embed data using only time-dependent features
+
+```{r}
+changeEmbedding <- function(seurat_object, psuper_object){
+  orig_seurat <- seurat_object
+  sig_genes <- as.character(psuper_object$beta_dt$symbol[which(psuper_object$beta_dt$abs_beta != 0)])
+  sig_genes <- sig_genes[which(sig_genes %in% rownames(seurat_object))]
+  print("Reseting Variable Features")
+  VariableFeatures(seurat_object) <- sig_genes
+  print("PCA...")
+  seurat_object <- RunPCA(seurat_object, verbose=F)
+  print("UMAP...")
+  seurat_object <- RunUMAP(seurat_object, dims=1:30)
+  print("Setting new embedding...")
+  orig_seurat[["umap_pseudo"]] <- CreateDimReducObject(embeddings = Embeddings(seurat_object, "umap")[,1:2], 
+                                                       key = "Pseudo_", assay = DefaultAssay(orig_seurat))
+  return(orig_seurat)
+}
+```
+
+```{r}
+a549_tgfb1  <- changeEmbedding(a549_tgfb1, a549_tgfb1_psuper)
+a549_egf <- changeEmbedding(a549_egf, a549_egf_psuper)
+a549_tnf <- changeEmbedding(a549_tnf, a549_tnf_psuper)
+
+du145_tgfb1  <- changeEmbedding(du145_tgfb1, du145_tgfb1_psuper)
+du145_egf <- changeEmbedding(du145_egf, du145_egf_psuper)
+du145_tnf <- changeEmbedding(du145_tnf, du145_tnf_psuper)
+
+mcf7_tgfb1  <- changeEmbedding(mcf7_tgfb1, mcf7_tgfb1_psuper)
+mcf7_egf <- changeEmbedding(mcf7_egf, mcf7_egf_psuper)
+mcf7_tnf <- changeEmbedding(mcf7_tnf, mcf7_tnf_psuper)
+
+ovca420_tgfb1  <- changeEmbedding(ovca420_tgfb1, ovca420_tgfb1_psuper)
+ovca420_egf <- changeEmbedding(ovca420_egf, ovca420_egf_psuper)
+ovca420_tnf <- changeEmbedding(ovca420_tnf, ovca420_tnf_psuper)
+```
+
+```{r}
+DimPlot(a549_tgfb1, reduction='umap_pseudo', group.by="Sample", label=T)
+DimPlot(a549_egf, reduction='umap_pseudo', group.by="Sample", label=T)
+DimPlot(a549_tnf, reduction='umap_pseudo', group.by="Sample", label=T)
+```
+
+```{r}
+DimPlot(du145_tgfb1, reduction='umap_pseudo', group.by="Sample", label=T)
+DimPlot(du145_egf, reduction='umap_pseudo', group.by="Sample", label=T)
+DimPlot(du145_tnf, reduction='umap_pseudo', group.by="Sample", label=T)
+```
+
+```{r}
+DimPlot(mcf7_tgfb1, reduction='umap_pseudo', group.by="Sample", label=T)
+DimPlot(mcf7_egf, reduction='umap_pseudo', group.by="Sample", label=T)
+DimPlot(mcf7_tnf, reduction='umap_pseudo', group.by="Sample", label=T)
+```
+
+```{r}
+DimPlot(ovca420_tgfb1, reduction='umap_pseudo', group.by="Sample", label=T)
+DimPlot(ovca420_egf, reduction='umap_pseudo', group.by="Sample", label=T)
+DimPlot(ovca420_tnf, reduction='umap_pseudo', group.by="Sample", label=T)
+```
+
+# Calculate pseudotime values for withdrawal samples
+The beauty of psupertime is that matrix multiplication of the beta coefficients with
+the log-transformed expression values is how pseudotime values are calculated.
+
+Therefore, I can calculate the pseudotime values for each withdrawal cell as well
+
+Because of renaming of gene symbols with hyphens by psupertime, I have to go in a roundabout way to get this done
+
+```{r}
+addPseudotime <- function(seurat_object){
+  treated_cells <- which(seurat_object$Time %in% c("0d", "8h", "1d", "3d", "7d"))
+  timepoints <- seurat_object@meta.data[treated_cells, "Time"]
+  timepoints <- factor(timepoints, levels=c("0d", "8h", "1d", "3d", "7d"))
+  
+  exp <- as.matrix(seurat_object[["RNA"]]@data)
+  temp_params = list(smooth=TRUE, scale=TRUE)
+  # Perform the smoothing and scaling on entire dataset
+  exp_processed <- psupertime:::make_x_data(exp, VariableFeatures(seurat_object),
+                                            temp_params)
+  exp_processed <- t(exp_processed)
+  # Run psupertime only on the treated samples
+  psuper_obj_new <- psupertime(exp_processed[,treated_cells], timepoints, sel_genes="all",
+                         smooth=F, scale=F, penalization="best", min_expression=0)
+  
+  # Get genes used as input for psupertime (reformated without hyphens)
+  input_genes <- rownames(psuper_obj_new$glmnet_best$beta)
+  input_genes <- input_genes[1:3000]
+  # Grab their coefficients
+  coef_values <- psuper_obj_new$beta_dt$beta
+  names(coef_values) <- psuper_obj_new$beta_dt$symbol
+  coef_values <- coef_values[input_genes]
+  
+  # Calculated pseudotime values from coefficients
+  pseudotime_values <- as.numeric(coef_values %*% exp_processed)
+  pseudotime_values <- scales::rescale(pseudotime_values, to=c(0,1))
+  
+  # Add pseudotime values into seurat object
+  seurat_object$Pseudotime <- pseudotime_values
+  return(seurat_object)
+}
+```
+
+```{r}
+a549_tgfb1 <- addPseudotime(a549_tgfb1)
+a549_egf <- addPseudotime(a549_egf)
+a549_tnf <- addPseudotime(a549_tnf)
+
+du145_tgfb1 <- addPseudotime(du145_tgfb1)
+du145_egf <- addPseudotime(du145_egf)
+du145_tnf <- addPseudotime(du145_tnf)
+
+mcf7_tgfb1 <- addPseudotime(mcf7_tgfb1)
+mcf7_egf <- addPseudotime(mcf7_egf)
+mcf7_tnf <- addPseudotime(mcf7_tnf)
+
+ovca420_tgfb1 <- addPseudotime(ovca420_tgfb1)
+ovca420_egf <- addPseudotime(ovca420_egf)
+ovca420_tnf <- addPseudotime(ovca420_tnf)
+```
+
+## Check pseudotime values across samples
+```{r}
+VlnPlot(a549_tgfb1, features="Pseudotime", group.by="Sample")
+VlnPlot(a549_egf, features="Pseudotime", group.by="Sample")
+VlnPlot(a549_tnf, features="Pseudotime", group.by="Sample")
+```
+
+```{r}
+VlnPlot(du145_tgfb1, features="Pseudotime", group.by="Sample")
+VlnPlot(du145_egf, features="Pseudotime", group.by="Sample")
+VlnPlot(du145_tnf, features="Pseudotime", group.by="Sample")
+```
+
+```{r}
+VlnPlot(mcf7_tgfb1, features="Pseudotime", group.by="Sample")
+VlnPlot(mcf7_egf, features="Pseudotime", group.by="Sample")
+VlnPlot(mcf7_tnf, features="Pseudotime", group.by="Sample")
+```
+
+```{r}
+VlnPlot(ovca420_tgfb1, features="Pseudotime", group.by="Sample")
+VlnPlot(ovca420_egf, features="Pseudotime", group.by="Sample")
+VlnPlot(ovca420_tnf, features="Pseudotime", group.by="Sample")
+```
+
+## Better plots
+```{r}
+PRGn <- rev(RColorBrewer::brewer.pal(11, "PRGn"))
+color_ramp <- c(PRGn[1], PRGn[2], PRGn[3], PRGn[5], 'lightgrey', PRGn[7], PRGn[8], PRGn[9])
+
+plotPseudotime <- function(seurat_object, file_dir){
+  data <- seurat_object@meta.data
+  data_plot <- ggplot(data, aes(x=Sample, y=Pseudotime)) +
+    geom_sina(size=0.25, alpha=0.75, aes(color=Sample)) +
+    stat_summary(fun.y=median, fun.ymin=median, fun.ymax=median,
+                 geom='crossbar', width=0.5, fatten=0, size=1.5) +
+    scale_color_manual(values=color_ramp, labels=c("0d", "8h", "1d", "3d", "7d",
+                                                   "7d + 8h off", "7d + 1d off",
+                                                   "7d + 3d off")) +
+    theme_classic() +
+    theme(legend.position="none",
+          axis.text.x=element_blank(),
+          axis.title.x=element_blank(),
+          axis.text.y=element_text(size=10, color='black'),
+          axis.title.y=element_text(size=12, color="black"))
+  
+  
+  ggsave(data_plot, file=paste0("../figs/",file_dir,"/",
+                                  file_dir, "_Pseudotime_Sina.pdf"),
+         width=6, height=2.5, useDingbats=F)
+  ggsave(data_plot, file=paste0("../figs/",file_dir,"/",
+                                  file_dir, "_Pseudotime_Sina.png"),
+         width=6, height=2.5, dpi=600)
+  data_plot
+}
+```
+
+```{r}
+p1 <- plotPseudotime(a549_tgfb1, "A549_TGFB1")
+p2 <- plotPseudotime(a549_egf, "A549_EGF")
+p3 <- plotPseudotime(a549_tnf, "A549_TNF")
+
+p4 <- plotPseudotime(du145_tgfb1, "DU145_TGFB1")
+p5 <- plotPseudotime(du145_egf, "DU145_EGF")
+p6 <- plotPseudotime(du145_tnf, "DU145_TNF")
+
+p7 <- plotPseudotime(mcf7_tgfb1, "MCF7_TGFB1")
+p8 <- plotPseudotime(mcf7_egf, "MCF7_EGF")
+p9 <- plotPseudotime(mcf7_tnf, "MCF7_TNF")
+
+p10 <- plotPseudotime(ovca420_tgfb1, "OVCA420_TGFB1")
+p11 <- plotPseudotime(ovca420_egf, "OVCA420_EGF")
+p12 <- plotPseudotime(ovca420_tnf, "OVCA420_TNF")
+```
+
+```{r}
+grid_plots <- cowplot::plot_grid(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12,
+                        ncol=3)
+cowplot::save_plot(grid_plots, filename="../figs/Pseudotime_Sina.png",
+                   base_width=15, base_height=8, dpi=300)
+```
+
+## UMAP plots
+```{r}
+plotPseudotime <- function(seurat_object, file_dir){
+  data <- seurat_object@meta.data
+  data$UMAP1 <- Embeddings(seurat_object, 'umap_pseudo')[,1]
+  data$UMAP2 <- Embeddings(seurat_object, 'umap_pseudo')[,2]
+  data_plot <- ggplot(data, aes(x=UMAP1, y=UMAP2)) +
+    geom_point(size=0.25, alpha=0.5, aes(color=Pseudotime)) +
+    scale_color_viridis(option="D") +
+    theme_void()
+  
+  
+  ggsave(data_plot, file=paste0("../figs/",file_dir,"/",
+                                  file_dir, "_Pseudotime_UMAP.pdf"),
+         width=5, height=2.5, useDingbats=F)
+  ggsave(data_plot, file=paste0("../figs/",file_dir,"/",
+                                  file_dir, "_Pseudotime_UMAP.png"),
+         width=5, height=2.5, dpi=600)
+  data_plot
+}
+```
+
+```{r}
+p1 <- plotPseudotime(a549_tgfb1, "A549_TGFB1")
+p2 <- plotPseudotime(a549_egf, "A549_EGF")
+p3 <- plotPseudotime(a549_tnf, "A549_TNF")
+
+p4 <- plotPseudotime(du145_tgfb1, "DU145_TGFB1")
+p5 <- plotPseudotime(du145_egf, "DU145_EGF")
+p6 <- plotPseudotime(du145_tnf, "DU145_TNF")
+
+p7 <- plotPseudotime(mcf7_tgfb1, "MCF7_TGFB1")
+p8 <- plotPseudotime(mcf7_egf, "MCF7_EGF")
+p9 <- plotPseudotime(mcf7_tnf, "MCF7_TNF")
+
+p10 <- plotPseudotime(ovca420_tgfb1, "OVCA420_TGFB1")
+p11 <- plotPseudotime(ovca420_egf, "OVCA420_EGF")
+p12 <- plotPseudotime(ovca420_tnf, "OVCA420_TNF")
+```
+
+```{r}
+grid_plots <- cowplot::plot_grid(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12,
+                        ncol=3)
+cowplot::save_plot(grid_plots, filename="../figs/Pseudotime_UMAP.png",
+                   base_width=12, base_height=6.5, dpi=300)
+```
+
+# Differential Expression with GAMs
+
+```{r}
+runGAM <- function(seurat_object){
+  exp <- as.matrix(seurat_object[["RNA"]]@data)
+  
+  gam.pval <- apply(exp,1,function(z){
+    d <- data.frame(exp=z, pseudotime=seurat_object$Pseudotime,
+                    batch=seurat_object$Mix)
+    tmp <- mgcv::gam(exp ~ s(pseudotime, k=4) + batch, 
+                     data=d,
+                     method="REML")
+    p <- summary(tmp)[[8]] # where the p-value is stored
+    p
+    })
+  gam.pval <- as.data.frame(gam.pval)
+  colnames(gam.pval) <- "pval"
+  gam.pval$Gene <- rownames(gam.pval)
+  gam.pval$fdr <- p.adjust(gam.pval$pval, method='fdr')
+  return(gam.pval)
+}
+```
+
+```{r}
+a549_tgfb1_gam <- runGAM(a549_tgfb1)
+a549_egf_gam <- runGAM(a549_egf)
+a549_tnf_gam <- runGAM(a549_tnf)
+
+du145_tgfb1_gam <- runGAM(du145_tgfb1)
+du145_egf_gam <- runGAM(du145_egf)
+du145_tnf_gam <- runGAM(du145_tnf)
+
+mcf7_tgfb1_gam <- runGAM(mcf7_tgfb1)
+mcf7_egf_gam <- runGAM(mcf7_egf)
+mcf7_tnf_gam <- runGAM(mcf7_tnf)
+
+ovca420_tgfb1_gam <- runGAM(ovca420_tgfb1)
+ovca420_egf_gam <- runGAM(ovca420_egf)
+ovca420_tnf_gam <- runGAM(ovca420_tnf)
+```
+
+
+Save p-values
+```{r}
+write.csv(a549_tgfb1_gam, file = "../output/pseudotime/a549_tgfb1_dge.csv",
+          quote=F, row.names=T)
+write.csv(a549_egf_gam, file = "../output/pseudotime/a549_egf_dge.csv",
+          quote=F, row.names=T)
+write.csv(a549_tnf_gam, file = "../output/pseudotime/a549_tnf_dge.csv",
+          quote=F, row.names=T)
+
+write.csv(du145_tgfb1_gam, file = "../output/pseudotime/du145_tgfb1_dge.csv",
+          quote=F, row.names=T)
+write.csv(du145_egf_gam, file = "../output/pseudotime/du145_egf_dge.csv",
+          quote=F, row.names=T)
+write.csv(du145_tnf_gam, file = "../output/pseudotime/du145_tnf_dge.csv",
+          quote=F, row.names=T)
+
+write.csv(mcf7_tgfb1_gam, file = "../output/pseudotime/mcf7_tgfb1_dge.csv",
+          quote=F, row.names=T)
+write.csv(mcf7_egf_gam, file = "../output/pseudotime/mcf7_egf_dge.csv",
+          quote=F, row.names=T)
+write.csv(mcf7_tnf_gam, file = "../output/pseudotime/mcf7_tnf_dge.csv",
+          quote=F, row.names=T)
+
+write.csv(ovca420_tgfb1_gam, file = "../output/pseudotime/ovca420_tgfb1_dge.csv",
+          quote=F, row.names=T)
+write.csv(ovca420_egf_gam, file = "../output/pseudotime/ovca420_egf_dge.csv",
+          quote=F, row.names=T)
+write.csv(ovca420_tnf_gam, file = "../output/pseudotime/ovca420_tnf_dge.csv",
+          quote=F, row.names=T)
+```
+
+
+Get sig genes
+```{r}
+a549_tgfb1_sig <- rownames(a549_tgfb1_gam)[which(a549_tgfb1_gam$fdr <= 0.05)]
+a549_egf_sig <- rownames(a549_egf_gam)[which(a549_egf_gam$fdr <= 0.05)]
+a549_tnf_sig <- rownames(a549_tnf_gam)[which(a549_tnf_gam$fdr <= 0.05)]
+
+du145_tgfb1_sig <- rownames(du145_tgfb1_gam)[which(du145_tgfb1_gam$fdr <= 0.05)]
+du145_egf_sig <- rownames(du145_egf_gam)[which(du145_egf_gam$fdr <= 0.05)]
+du145_tnf_sig <- rownames(du145_tnf_gam)[which(du145_tnf_gam$fdr <= 0.05)]
+
+mcf7_tgfb1_sig <- rownames(mcf7_tgfb1_gam)[which(mcf7_tgfb1_gam$fdr <= 0.05)]
+mcf7_egf_sig <- rownames(mcf7_egf_gam)[which(mcf7_egf_gam$fdr <= 0.05)]
+mcf7_tnf_sig <- rownames(mcf7_tnf_gam)[which(mcf7_tnf_gam$fdr <= 0.05)]
+
+ovca420_tgfb1_sig <- rownames(ovca420_tgfb1_gam)[which(ovca420_tgfb1_gam$fdr <= 0.05)]
+ovca420_egf_sig <- rownames(ovca420_egf_gam)[which(ovca420_egf_gam$fdr <= 0.05)]
+ovca420_tnf_sig <- rownames(ovca420_tnf_gam)[which(ovca420_tnf_gam$fdr <= 0.05)]
+```
+
+Many genes are significant with very modest effect sizes. To try to make it a little more manageable, we'll filter for only genes that are also in the top 2k variable genes
+
+```{r}
+#Make a function so we can tweak the number of genes
+getVarGenes <- function(seurat_object, n){
+  var_table <- seurat_object[["RNA"]]@meta.features
+  var_genes <- rownames(var_table[order(desc(var_table$vst.variance.standardized)),])[1:n]
+}
+```
+
+```{r}
+a549_tgfb1_sig <- a549_tgfb1_sig[which(a549_tgfb1_sig %in% getVarGenes(a549_tgfb1, 2000))]
+a549_egf_sig <- a549_egf_sig[which(a549_egf_sig %in% getVarGenes(a549_egf, 2000))]
+a549_tnf_sig <- a549_tnf_sig[which(a549_tnf_sig %in% getVarGenes(a549_tnf, 2000))]
+
+du145_tgfb1_sig <- du145_tgfb1_sig[which(du145_tgfb1_sig %in% getVarGenes(du145_tgfb1, 2000))]
+du145_egf_sig <- du145_egf_sig[which(du145_egf_sig %in% getVarGenes(du145_egf, 2000))]
+du145_tnf_sig <- du145_tnf_sig[which(du145_tnf_sig %in% getVarGenes(du145_tnf, 2000))]
+
+mcf7_tgfb1_sig <- mcf7_tgfb1_sig[which(mcf7_tgfb1_sig %in% getVarGenes(mcf7_tgfb1, 2000))]
+mcf7_egf_sig <- mcf7_egf_sig[which(mcf7_egf_sig %in% getVarGenes(mcf7_egf, 2000))]
+mcf7_tnf_sig <- mcf7_tnf_sig[which(mcf7_tnf_sig %in% getVarGenes(mcf7_tnf, 2000))]
+
+ovca420_tgfb1_sig <- ovca420_tgfb1_sig[which(ovca420_tgfb1_sig %in% getVarGenes(ovca420_tgfb1, 2000))]
+ovca420_egf_sig <- ovca420_egf_sig[which(ovca420_egf_sig %in% getVarGenes(ovca420_egf, 2000))]
+ovca420_tnf_sig <- ovca420_tnf_sig[which(ovca420_tnf_sig %in% getVarGenes(ovca420_tnf, 2000))]
+```
+
+
+# Intersections of top DGEs
+```{r}
+dge_list <- data.frame(Gene = unique(c(a549_tgfb1_sig,
+                                       a549_egf_sig,
+                                       a549_tnf_sig,
+                                       du145_tgfb1_sig,
+                                       du145_egf_sig,
+                                       du145_tnf_sig,
+                                       mcf7_tgfb1_sig,
+                                       mcf7_egf_sig,
+                                       mcf7_tnf_sig,
+                                       ovca420_tgfb1_sig,
+                                       ovca420_egf_sig,
+                                       ovca420_tnf_sig)))
+  
+dge_list$A549_EGF <- dge_list$Gene %in% a549_egf_sig
+dge_list$A549_TGFB1 <- dge_list$Gene %in% a549_tgfb1_sig
+dge_list$A549_TNF <- dge_list$Gene %in% a549_tnf_sig
+
+dge_list$DU145_EGF <- dge_list$Gene %in% du145_egf_sig
+dge_list$DU145_TGFB1 <- dge_list$Gene %in% du145_tgfb1_sig
+dge_list$DU145_TNF <- dge_list$Gene %in% du145_tnf_sig
+
+dge_list$MCF7_EGF <- dge_list$Gene %in% mcf7_egf_sig
+dge_list$MCF7_TGFB1 <- dge_list$Gene %in% mcf7_tgfb1_sig
+dge_list$MCF7_TNF <- dge_list$Gene %in% mcf7_tnf_sig
+
+dge_list$OVCA420_EGF <- dge_list$Gene %in% ovca420_egf_sig
+dge_list$OVCA420_TGFB1 <- dge_list$Gene %in% ovca420_tgfb1_sig
+dge_list$OVCA420_TNF <- dge_list$Gene %in% ovca420_tnf_sig
+
+#Convert TRUE/FALSE to 1/0
+dge_list[,2:ncol(dge_list)] <- lapply(dge_list[,2:ncol(dge_list)], as.numeric)
+```
+
+## UpSet plot
+```{r}
+#Text scale order: c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars)
+pdf("../figs/upset_pseudotime_dge.pdf", width=8, height=6, useDingbats=F)
+upset(dge_list, nsets=12, nintersects=15, keep.order=T,
+      sets=c("DU145_EGF", "DU145_TNF", "DU145_TGFB1",
+             "A549_EGF", "A549_TNF", "A549_TGFB1",
+             "MCF7_EGF", "MCF7_TNF", "MCF7_TGFB1",
+             "OVCA420_EGF", "OVCA420_TNF", "OVCA420_TGFB1"),
+      order.by = "freq", point.size=2.5,
+      mainbar.y.label = "DGE Gene\nIntersection Size",
+      sets.x.label = "DGE Gene Count",
+      text.scale=c(1.25, 1.25, 1.25,1.25, 1.5, 1.25),
+      mb.ratio=c(0.5,0.5))
+dev.off()
+```
+
+
+
+# Sum of diff. genes across each condition
+Idea here is simply to make a binary matrix for all unique genes that are diff. expressed across any condition. This will allow me to make a binarized heatmap and sum the number of samples that each gene is differentially expressed
+```{r}
+deg_list <- data.frame(Gene = unique(c(a549_tgfb1_sig , a549_egf_sig, a549_tnf_sig,
+                                       du145_tgfb1_sig, du145_egf_sig, du145_tnf_sig,
+                                       mcf7_tgfb1_sig, mcf7_egf_sig, mcf7_tnf_sig,
+                                       ovca420_tgfb1_sig, ovca420_egf_sig, ovca420_tnf_sig)))
+  
+deg_list$A549_TGFB1 <- deg_list$Gene %in% a549_tgfb1_sig
+deg_list$A549_EGF <- deg_list$Gene %in% a549_egf_sig
+deg_list$A549_TNF <- deg_list$Gene %in% a549_tnf_sig
+
+deg_list$DU145_TGFB1 <- deg_list$Gene %in% du145_tgfb1_sig
+deg_list$DU145_EGF <- deg_list$Gene %in% du145_egf_sig
+deg_list$DU145_TNF <- deg_list$Gene %in% du145_tnf_sig
+
+deg_list$MCF7_TGFB1 <- deg_list$Gene %in% mcf7_tgfb1_sig
+deg_list$MCF7_EGF <- deg_list$Gene %in% mcf7_egf_sig
+deg_list$MCF7_TNF <- deg_list$Gene %in% mcf7_tnf_sig
+
+deg_list$OVCA420_TGFB1 <- deg_list$Gene %in% ovca420_tgfb1_sig
+deg_list$OVCA420_EGF <- deg_list$Gene %in% ovca420_egf_sig
+deg_list$OVCA420_TNF <- deg_list$Gene %in% ovca420_tnf_sig
+
+#Convert TRUE/FALSE to 1/0
+deg_list[,2:ncol(deg_list)] <- lapply(deg_list[,2:ncol(deg_list)], as.numeric)
+```
+
+## Counts
+```{r}
+deg_list_counts <- as.data.frame(rowSums(deg_list[2:ncol(deg_list)]))
+colnames(deg_list_counts) <- "Count"
+deg_list_counts$Gene <- deg_list$Gene
+deg_list_counts <- arrange(deg_list_counts, desc(Count))
+deg_list_counts$Index <- 1:nrow(deg_list_counts)
+```
+
+```{r}
+count_plot <- ggplot(deg_list_counts, aes(x=Index, y=Count)) +
+  geom_point(size=1.5, color="black") +
+  xlab("") + ylab("Significant Counts") +
+  theme_classic() +
+  theme(axis.text=element_text(size=12, color="black"),
+        axis.title=element_text(size=12, color="black"))
+ggsave(count_plot, filename = "../figs/Pseudotime_DEG_counts.png",
+       dpi=600, width=7, height=4)
+```
+
+## Binarized Heatmap of EMT hallmarks
+```{r}
+library(fgsea)
+hallmarks <- fgsea::gmtPathways("~/Data/GeneLists/hallmark.genesets.v6.1.symbols.gmt")
+emt_genes <- hallmarks[["HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION"]]
+```
+
+
+```{r}
+counts <- deg_list[,2:ncol(deg_list)]
+rownames(counts) <- deg_list$Gene
+counts <- counts[emt_genes[which(emt_genes %in% rownames(counts))],]
+
+
+count_heatmap <- pheatmap(t(counts),
+                          color = c("grey95", "red3"),
+                          border_color="black",
+                          cluster_cols=T,
+                          cluster_rows=F,
+                          show_rownames=T,
+                          show_colnames=T,
+                          clustering_method="ward.D2",
+                          file="../figs/EMT_Hallmarks_DEG_Heatmap.png",
+                          width=25, height=3.75)
+```
+
+```{r}
+hallmark_clusters <- as.data.frame(cutree(count_heatmap$tree_col, k=2))
+colnames(hallmark_clusters) <- "Cluster"
+table(hallmark_clusters$Cluster)
+```
+
+```{r}
+conserved_genes <- rownames(hallmark_clusters)[hallmark_clusters$Cluster == 2]
+```
+
+
+# Heatmap of significant changes
+
+```{r}
+a549_tgfb1_gam <- read.csv("../output/pseudotime/a549_tgfb1_dge.csv", row.names = 1)
+a549_egf_gam <- read.csv("../output/pseudotime/a549_egf_dge.csv", row.names=1)
+a549_tnf_gam <- read.csv("../output/pseudotime/a549_tnf_dge.csv", row.names=1)
+
+du145_tgfb1_gam <- read.csv("../output/pseudotime/du145_tgfb1_dge.csv", row.names=1)
+du145_egf_gam <- read.csv("../output/pseudotime/du145_egf_dge.csv", row.names=1)
+du145_tnf_gam <- read.csv("../output/pseudotime/du145_tnf_dge.csv", row.names=1)
+
+mcf7_tgfb1_gam <- read.csv("../output/pseudotime/mcf7_tgfb1_dge.csv", row.names=1)
+mcf7_egf_gam <- read.csv("../output/pseudotime/mcf7_egf_dge.csv", row.names=1)
+mcf7_tnf_gam <- read.csv("../output/pseudotime/mcf7_tnf_dge.csv", row.names=1)
+
+ovca420_tgfb1_gam <- read.csv("../output/pseudotime/ovca420_tgfb1_dge.csv", row.names=1)
+ovca420_egf_gam <- read.csv("../output/pseudotime/ovca420_egf_dge.csv", row.names=1)
+ovca420_tnf_gam <- read.csv("../output/pseudotime/ovca420_tnf_dge.csv", row.names=1)
+```
+
+Plot heatmaps
+
+```{r}
+smoothExp <- function(seurat_object){
+  print("Modelling smooth values...")
+  exp <- as.matrix(seurat_object[["RNA"]]@data)
+  exp <- t(scale(t(exp), scale=T, center=T))
+  fits <- apply(exp, 1, function(z){
+    pseudo_data <- data.frame(Exp=z,
+                              Pseudotime=seurat_object$Pseudotime)
+    model <- mgcv::gam(Exp ~ s(Pseudotime, k=4), 
+                       data=pseudo_data, #Manually checked overfitting
+                       method="REML")
+    target_values <- data.frame(Pseudotime = seq(0, 1, length.out=201))
+    new_pseudo_values <- predict(model, newdata=target_values)
+  })
+  fits <- t(fits)
+  return(fits)
+}
+
+plotHeatmap <- function(smooth_fit, genes, file_dir){
+  exp <- smooth_fit[genes,]
+  exp[exp>0.5] <- 0.5
+  exp[exp<(-0.5)] <- (-0.5)
+  print("Making heatmap")
+  heatmap <- pheatmap(exp,
+                      color=viridis::magma(100),
+                      cluster_cols = F,
+                      cluster_rows = T,
+                      treeheight_row = 0,
+                      clustering_method="ward.D2",
+                      show_rownames=F,
+                      show_colnames=F,
+                      filename=paste0("../figs/", file_dir, "/", file_dir,
+                                      "_Pseudotime_Heatmap.png"),
+                      height=6, width=2)
+}
+```
+
+```{r}
+a549_tgfb1_fit <- smoothExp(a549_tgfb1)
+a549_egf_fit <- smoothExp(a549_egf)
+a549_tnf_fit <- smoothExp(a549_tnf)
+
+du145_tgfb1_fit <- smoothExp(du145_tgfb1)
+du145_egf_fit <- smoothExp(du145_egf)
+du145_tnf_fit <- smoothExp(du145_tnf)
+
+mcf7_tgfb1_fit <- smoothExp(mcf7_tgfb1)
+mcf7_egf_fit <- smoothExp(mcf7_egf)
+mcf7_tnf_fit <- smoothExp(mcf7_tnf)
+
+ovca420_tgfb1_fit <- smoothExp(ovca420_tgfb1)
+ovca420_egf_fit <- smoothExp(ovca420_egf)
+ovca420_tnf_fit <- smoothExp(ovca420_tnf)
+
+write.csv(a549_tgfb1_fit, file="../output/pseudotime/a549_tgfb1_fit.csv", quote=F)
+write.csv(a549_egf_fit, file="../output/pseudotime/a549_egf_fit.csv", quote=F)
+write.csv(a549_tnf_fit, file="../output/pseudotime/a549_tnf_fit.csv", quote=F)
+
+write.csv(du145_tgfb1_fit, file="../output/pseudotime/du145_tgfb1_fit.csv", quote=F)
+write.csv(du145_egf_fit, file="../output/pseudotime/du145_egf_fit.csv", quote=F)
+write.csv(du145_tnf_fit, file="../output/pseudotime/du145_tnf_fit.csv", quote=F)
+
+write.csv(mcf7_tgfb1_fit, file="../output/pseudotime/mcf7_tgfb1_fit.csv", quote=F)
+write.csv(mcf7_egf_fit, file="../output/pseudotime/mcf7_egf_fit.csv", quote=F)
+write.csv(mcf7_tnf_fit, file="../output/pseudotime/mcf7_tnf_fit.csv", quote=F)
+
+write.csv(ovca420_tgfb1_fit, file="../output/pseudotime/ovca420_tgfb1_fit.csv", quote=F)
+write.csv(ovca420_egf_fit, file="../output/pseudotime/ovca420_egf_fit.csv", quote=F)
+write.csv(ovca420_tnf_fit, file="../output/pseudotime/ovca420_tnf_fit.csv", quote=F)
+```
+
+```{r}
+a549_tgfb1_fit <- read.csv("../output/pseudotime/a549_tgfb1_fit.csv", row.names=1)
+a549_egf_fit <- read.csv("../output/pseudotime/a549_egf_fit.csv", row.names=1)
+a549_tnf_fit <- read.csv("../output/pseudotime/a549_tnf_fit.csv", row.names=1)
+
+du145_tgfb1_fit <- read.csv("../output/pseudotime/du145_tgfb1_fit.csv", row.names=1)
+du145_egf_fit <- read.csv("../output/pseudotime/du145_egf_fit.csv", row.names=1)
+du145_tnf_fit <- read.csv("../output/pseudotime/du145_tnf_fit.csv", row.names=1)
+
+mcf7_tgfb1_fit <- read.csv("../output/pseudotime/mcf7_tgfb1_fit.csv", row.names=1)
+mcf7_egf_fit <- read.csv("../output/pseudotime/mcf7_egf_fit.csv", row.names=1)
+mcf7_tnf_fit <- read.csv("../output/pseudotime/mcf7_tnf_fit.csv", row.names=1)
+
+ovca420_tgfb1_fit <- read.csv("../output/pseudotime/ovca420_tgfb1_fit.csv", row.names=1)
+ovca420_egf_fit <- read.csv("../output/pseudotime/ovca420_egf_fit.csv", row.names=1)
+ovca420_tnf_fit <- read.csv("../output/pseudotime/ovca420_tnf_fit.csv", row.names=1)
+```
+
+```{r}
+a549_tgfb1_heatmap <- plotHeatmap(a549_tgfb1_fit, a549_tgfb1_sig, "A549_TGFB1")
+a549_egf_heatmap <- plotHeatmap(a549_egf_fit, a549_egf_sig, "A549_EGF")
+a549_tnf_heatmap <- plotHeatmap(a549_tnf_fit, a549_tnf_sig, "A549_TNF")
+
+du145_tgfb1_heatmap <- plotHeatmap(du145_tgfb1_fit, du145_tgfb1_sig, "DU145_TGFB1")
+du145_egf_heatmap <- plotHeatmap(du145_egf_fit, du145_egf_sig, "DU145_EGF")
+du145_tnf_heatmap <- plotHeatmap(du145_tnf_fit, du145_tnf_sig, "DU145_TNF")
+
+mcf7_tgfb1_heatmap <- plotHeatmap(mcf7_tgfb1_fit, mcf7_tgfb1_sig, "MCF7_TGFB1")
+mcf7_egf_heatmap <- plotHeatmap(mcf7_egf_fit, mcf7_egf_sig, "MCF7_EGF")
+mcf7_tnf_heatmap <- plotHeatmap(mcf7_tnf_fit, mcf7_tnf_sig, "MCF7_TNF")
+
+ovca420_tgfb1_heatmap <- plotHeatmap(ovca420_tgfb1_fit, ovca420_tgfb1_sig, "OVCA420_TGFB1")
+ovca420_egf_heatmap <- plotHeatmap(ovca420_egf_fit, ovca420_egf_sig, "OVCA420_EGF")
+ovca420_tnf_heatmap <- plotHeatmap(ovca420_tnf_fit, ovca420_tnf_sig, "OVCA420_TNF")
+```
+
+## Avg expression of clusters
+```{r}
+plot_cluster_exp <- function(fit, heatmap){
+  clusters <- as.data.frame(cutree(heatmap$tree_row, k=5))
+  colnames(clusters) <- "Cluster"
+  
+  fit <- fit[rownames(clusters),]
+  colnames(fit) <- 1:ncol(fit)
+  fit$Cluster <- clusters$Cluster
+  fit <- gather(fit, Pseudotime, Expression, -Cluster)
+  fit$Pseudotime <- as.numeric(fit$Pseudotime)
+  fit$Pseudotime <- fit$Pseudotime / max(fit$Pseudotime) #rescale to 0-1
+  fit$Cluster <- factor(fit$Cluster)
+  
+  pseudo_plot <- ggplot(fit, aes(x=Pseudotime, y=Expression)) +
+    geom_smooth(aes(color=Cluster)) +
+    theme(legend.position="none")
+  pseudo_plot
+}
+```
+
+```{r}
+a549_tgfb1_exp <- plot_cluster_exp(a549_tgfb1_fit, a549_tgfb1_heatmap)
+a549_egf_exp <- plot_cluster_exp(a549_egf_fit, a549_egf_heatmap)
+a549_tnf_exp <- plot_cluster_exp(a549_tnf_fit, a549_tnf_heatmap)
+
+du145_tgfb1_exp <- plot_cluster_exp(du145_tgfb1_fit, du145_tgfb1_heatmap)
+du145_egf_exp <- plot_cluster_exp(du145_egf_fit, du145_egf_heatmap)
+du145_tnf_exp <- plot_cluster_exp(du145_tnf_fit, du145_tnf_heatmap)
+
+mcf7_tgfb1_exp <- plot_cluster_exp(mcf7_tgfb1_fit, mcf7_tgfb1_heatmap)
+mcf7_egf_exp <- plot_cluster_exp(mcf7_egf_fit, mcf7_egf_heatmap)
+mcf7_tnf_exp <- plot_cluster_exp(mcf7_tnf_fit, mcf7_tnf_heatmap)
+
+ovca420_tgfb1_exp <- plot_cluster_exp(ovca420_tgfb1_fit, ovca420_tgfb1_heatmap)
+ovca420_egf_exp <- plot_cluster_exp(ovca420_egf_fit, ovca420_egf_heatmap)
+ovca420_tnf_exp <- plot_cluster_exp(ovca420_tnf_fit, ovca420_tnf_heatmap)
+
+plot_grid(a549_tgfb1_exp, a549_egf_exp, a549_tnf_exp,
+          du145_tgfb1_exp, du145_egf_exp, du145_tnf_exp,
+          mcf7_tgfb1_exp, mcf7_egf_exp, mcf7_tnf_exp,
+          ovca420_tgfb1_exp, ovca420_egf_exp, ovca420_tnf_exp,
+          ncol = 3)
+```
+
+Won't save this for now, but it's an option down the road
+
+# Heatmap of Conserved Hallmarks Genes
+```{r}
+plotHeatmap <- function(smooth_fit, genes, file_dir){
+  exp <- smooth_fit[genes,]
+  exp <- na.omit(exp)
+  exp[exp>0.5] <- 0.5
+  exp[exp<(-0.5)] <- (-0.5)
+  print("Making heatmap")
+  heatmap <- pheatmap(exp,
+                      color=viridis::magma(100),
+                      cluster_cols = F,
+                      cluster_rows = T,
+                      clustering_method="ward.D2",
+                      treeheight_row = 0,
+                      show_rownames=T,
+                      show_colnames=F,
+                      filename=paste0("../figs/", file_dir, "/", file_dir,
+                                      "_Pseudotime_ConservedGenes_Heatmap.png"),
+                      height=6, width=3)
+}
+```
+
+```{r}
+a549_tgfb1_heatmap <- plotHeatmap(a549_tgfb1_fit, conserved_genes, "A549_TGFB1")
+a549_egf_heatmap <- plotHeatmap(a549_egf_fit, conserved_genes, "A549_EGF")
+a549_tnf_heatmap <- plotHeatmap(a549_tnf_fit, conserved_genes, "A549_TNF")
+
+du145_tgfb1_heatmap <- plotHeatmap(du145_tgfb1_fit, conserved_genes, "DU145_TGFB1")
+du145_egf_heatmap <- plotHeatmap(du145_egf_fit, conserved_genes, "DU145_EGF")
+du145_tnf_heatmap <- plotHeatmap(du145_tnf_fit, conserved_genes, "DU145_TNF")
+
+mcf7_tgfb1_heatmap <- plotHeatmap(mcf7_tgfb1_fit, conserved_genes, "MCF7_TGFB1")
+mcf7_egf_heatmap <- plotHeatmap(mcf7_egf_fit, conserved_genes, "MCF7_EGF")
+mcf7_tnf_heatmap <- plotHeatmap(mcf7_tnf_fit, conserved_genes, "MCF7_TNF")
+
+ovca420_tgfb1_heatmap <- plotHeatmap(ovca420_tgfb1_fit, conserved_genes, "OVCA420_TGFB1")
+ovca420_egf_heatmap <- plotHeatmap(ovca420_egf_fit, conserved_genes, "OVCA420_EGF")
+ovca420_tnf_heatmap <- plotHeatmap(ovca420_tnf_fit, conserved_genes, "OVCA420_TNF")
+```
+
+# Make our own gene set
+Let's do the most naive approach and simply take all genes that are differentially expressed in >=6 conditions
+```{r}
+conserved_genes <- as.character(filter(deg_list_counts, Count >= 6)$Gene)
+length(conserved_genes)
+```
+
+From here, we'll do a simple linear model to determine the directionality of the 689 genes
+
+## Linear model of conserved genes
+
+```{r}
+linearGAM <- function(seurat_object, genes){
+  genes <- genes[which(genes %in% rownames(seurat_object))]
+  exp <- as.matrix(seurat_object[["RNA"]]@data[genes,])
+  
+  gam.coef <- apply(exp,1,function(z){
+    d <- data.frame(exp=z, pseudotime=seurat_object$Pseudotime,
+                    batch = seurat_object$Mix)
+    tmp <- mgcv::gam(exp ~ pseudotime + batch, data=d)
+    p <- coef(tmp)[2] # where the pseudotime coefficient is stored
+    p
+    })
+  gam.coef <- as.data.frame(gam.coef)
+  colnames(gam.coef) <- "Coefficient"
+  return(gam.coef)
+}
+```
+
+```{r}
+a549_tgfb1_conserved <- linearGAM(a549_tgfb1, conserved_genes)
+a549_egf_conserved <- linearGAM(a549_egf, conserved_genes)
+a549_tnf_conserved <- linearGAM(a549_tnf, conserved_genes)
+
+du145_tgfb1_conserved <- linearGAM(du145_tgfb1, conserved_genes)
+du145_egf_conserved <- linearGAM(du145_egf, conserved_genes)
+du145_tnf_conserved <- linearGAM(du145_tnf, conserved_genes)
+
+mcf7_tgfb1_conserved <- linearGAM(mcf7_tgfb1, conserved_genes)
+mcf7_egf_conserved <- linearGAM(mcf7_egf, conserved_genes)
+mcf7_tnf_conserved <- linearGAM(mcf7_tnf, conserved_genes)
+
+ovca420_tgfb1_conserved <- linearGAM(ovca420_tgfb1, conserved_genes)
+ovca420_egf_conserved <- linearGAM(ovca420_egf, conserved_genes)
+ovca420_tnf_conserved <- linearGAM(ovca420_tnf, conserved_genes)
+```
+
+```{r}
+coef_mat <- data.frame(A549_TGFB1 = a549_tgfb1_conserved[conserved_genes,"Coefficient"],
+                       A549_EGF = a549_egf_conserved[conserved_genes, "Coefficient"],
+                       A549_TNF = a549_tnf_conserved[conserved_genes, "Coefficient"],
+                       DU145_TGFB1 = du145_tgfb1_conserved[conserved_genes,"Coefficient"],
+                       DU145_EGF = du145_egf_conserved[conserved_genes, "Coefficient"],
+                       DU145_TNF = du145_tnf_conserved[conserved_genes, "Coefficient"],
+                       MCF7_TGFB1 = mcf7_tgfb1_conserved[conserved_genes,"Coefficient"],
+                       MCF7_EGF = mcf7_egf_conserved[conserved_genes, "Coefficient"],
+                       MCF7_TNF = mcf7_tnf_conserved[conserved_genes, "Coefficient"],
+                       OVCA420_TGFB1 = ovca420_tgfb1_conserved[conserved_genes,"Coefficient"],
+                       OVCA420_EGF = ovca420_egf_conserved[conserved_genes, "Coefficient"],
+                       OVCA420_TNF = ovca420_tnf_conserved[conserved_genes, "Coefficient"])
+coef_mat <- as.matrix(coef_mat)
+rownames(coef_mat) <- conserved_genes
+coef_mat[is.na(coef_mat)] <- 0
+
+#Only keep values for significant changes
+deg_list_temp <- as.matrix(deg_list[,2:ncol(deg_list)])
+rownames(deg_list_temp) <- deg_list$Gene
+deg_list_temp <- deg_list_temp[rownames(coef_mat),]
+
+sig_mat <- coef_mat * deg_list_temp
+
+# Only keep genes differentially expressed in the same direction in >=6 samples
+sig_mat_up <- sig_mat
+sig_mat_up[sig_mat_up>0] <- 1
+sig_mat_up[sig_mat_up<0] <- 0 
+up_genes <- rownames(sig_mat_up)[which(rowSums(sig_mat_up) >= 8)]
+
+sig_mat_down <- sig_mat
+sig_mat_down[sig_mat_down>0] <- 0
+sig_mat_down[sig_mat_down<0] <- 1 
+down_genes <- rownames(sig_mat_down)[which(rowSums(sig_mat_down) >= 8)]
+
+coef_mat <- coef_mat[c(up_genes, down_genes),]
+coef_mat[coef_mat>0.25] <- 0.25
+coef_mat[coef_mat< (-0.25)] <- (-0.25)
+
+coef_heatmap <- pheatmap(t(coef_mat),
+                         color = colorRampPalette(rev(brewer.pal(7, "RdBu")))(100),
+                         border_color = "black",
+                         cluster_cols=T,
+                         cluster_rows=F,
+                         treeheight_col = 0,
+                         clustering_method = "ward.D2",
+                         show_rownames=T,
+                         show_colnames=T,
+                         cutree_cols=2,
+                         filename="../figs/Heatmap_Conserved_EMT_Genes.png",
+                         width=17, height=3.25)
+```
+
+```{r}
+write.csv(up_genes, file="../output/conserved_upregulated_genes.csv", quote=F)
+write.csv(down_genes, file="../output/conserved_downregulated_genes.csv", quote=F)
+```
+
+
+# fGSEA of EMT Hallmarks
+Just to have extra punch the EMT-related changes happen
+```{r}
+a549_tgfb1_gam <- read.csv("../output/pseudotime/a549_tgfb1_dge.csv", row.names = 1)
+a549_egf_gam <- read.csv("../output/pseudotime/a549_egf_dge.csv", row.names=1)
+a549_tnf_gam <- read.csv("../output/pseudotime/a549_tnf_dge.csv", row.names=1)
+
+du145_tgfb1_gam <- read.csv("../output/pseudotime/du145_tgfb1_dge.csv", row.names=1)
+du145_egf_gam <- read.csv("../output/pseudotime/du145_egf_dge.csv", row.names=1)
+du145_tnf_gam <- read.csv("../output/pseudotime/du145_tnf_dge.csv", row.names=1)
+
+mcf7_tgfb1_gam <- read.csv("../output/pseudotime/mcf7_tgfb1_dge.csv", row.names=1)
+mcf7_egf_gam <- read.csv("../output/pseudotime/mcf7_egf_dge.csv", row.names=1)
+mcf7_tnf_gam <- read.csv("../output/pseudotime/mcf7_tnf_dge.csv", row.names=1)
+
+ovca420_tgfb1_gam <- read.csv("../output/pseudotime/ovca420_tgfb1_dge.csv", row.names=1)
+ovca420_egf_gam <- read.csv("../output/pseudotime/ovca420_egf_dge.csv", row.names=1)
+ovca420_tnf_gam <- read.csv("../output/pseudotime/ovca420_tnf_dge.csv", row.names=1)
+```
+
+```{r}
+library(fgsea)
+hallmarks <- fgsea::gmtPathways("~/Data/GeneLists/hallmark.genesets.v6.1.symbols.gmt")
+```
+
+```{r}
+runGSEA <- function(dge_results){
+  dge_results <- arrange(dge_results, desc(fdr)) #lowest p-value needs highest value
+  fdr_rank <- 1:nrow(dge_results)
+  names(fdr_rank) <- dge_results$Gene
+  fgsea_hallmarks <- fgsea(pathways = hallmarks["HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION"],
+                         stats = fdr_rank,
+                         minSize=15,
+                         maxSize=500,
+                         nproc=2,
+                         nperm=100000)
+}
+```
+
+```{r}
+a549_tgfb1_gsea <- runGSEA(a549_tgfb1_gam)
+a549_egf_gsea <- runGSEA(a549_egf_gam)
+a549_tnf_gsea <- runGSEA(a549_tnf_gam)
+
+du145_tgfb1_gsea <- runGSEA(du145_tgfb1_gam)
+du145_egf_gsea <- runGSEA(du145_egf_gam)
+du145_tnf_gsea <- runGSEA(du145_tnf_gam)
+
+mcf7_tgfb1_gsea <- runGSEA(mcf7_tgfb1_gam)
+mcf7_egf_gsea <- runGSEA(mcf7_egf_gam)
+mcf7_tnf_gsea <- runGSEA(mcf7_tnf_gam)
+
+ovca420_tgfb1_gsea <- runGSEA(ovca420_tgfb1_gam)
+ovca420_egf_gsea <- runGSEA(ovca420_egf_gam)
+ovca420_tnf_gsea <- runGSEA(ovca420_tnf_gam)
+```
+
+```{r}
+plotEMT <- function(dge_results, file_dir){
+  dge_results <- arrange(dge_results, desc(fdr)) #lowest p-value needs highest value
+  fdr_rank <- 1:nrow(dge_results)
+  names(fdr_rank) <- dge_results$Gene
+  gsea_plot <- fgsea::plotEnrichment(hallmarks[["HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION"]], 
+                                     fdr_rank) +
+    #labs(title="Epithelial Mesenchymal Transition") + 
+    ylab("NES") + xlab("Gene rank") +
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=14))
+  ggsave(gsea_plot, file=paste0("../figs/",file_dir,"/", file_dir, "_EMT_GSEA_Pseudotime.png"),
+         width=5, height=1.5, dpi=600)
+  gsea_plot
+}
+```
+
+```{r}
+plotEMT(a549_tgfb1_gam, "A549_TGFB1")
+plotEMT(a549_egf_gam, "A549_EGF")
+plotEMT(a549_tnf_gam, "A549_TNF")
+
+plotEMT(du145_tgfb1_gam, "DU145_TGFB1")
+plotEMT(du145_egf_gam, "DU145_EGF")
+plotEMT(du145_tnf_gam, "DU145_TNF")
+
+plotEMT(mcf7_tgfb1_gam, "MCF7_TGFB1")
+plotEMT(mcf7_egf_gam, "MCF7_EGF")
+plotEMT(mcf7_tnf_gam, "MCF7_TNF")
+
+plotEMT(ovca420_tgfb1_gam, "OVCA420_TGFB1")
+plotEMT(ovca420_egf_gam, "OVCA420_EGF")
+plotEMT(ovca420_tnf_gam, "OVCA420_TNF")
+```
+
+# Re-save seurat objects
+```{r}
+saveRDS(a549_tgfb1, file="../data/A549_TGFB1.rds")
+saveRDS(a549_egf, file="../data/A549_EGF.rds")
+saveRDS(a549_tnf, file="../data/A549_TNF.rds")
+
+saveRDS(du145_tgfb1, file="../data/DU145_TGFB1.rds")
+saveRDS(du145_egf, file="../data/DU145_EGF.rds")
+saveRDS(du145_tnf, file="../data/DU145_TNF.rds")
+
+saveRDS(ovca420_tgfb1, file="../data/OVCA420_TGFB1.rds")
+saveRDS(ovca420_egf, file="../data/OVCA420_EGF.rds")
+saveRDS(ovca420_tnf, file="../data/OVCA420_TNF.rds")
+
+saveRDS(mcf7_tgfb1, file="../data/MCF7_TGFB1.rds")
+saveRDS(mcf7_egf, file="../data/MCF7_EGF.rds")
+saveRDS(mcf7_tnf, file="../data/MCF7_TNF.rds")
+```

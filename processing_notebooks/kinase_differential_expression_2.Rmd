@@ -1,0 +1,922 @@
+---
+title: "Kinase inhibition: differential expression"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(psupertime)
+library(dplyr)
+library(stringr)
+```
+
+# Load the data
+```{r}
+a549_untreated_kinase <- readRDS("../data/A549_Kinase_Untreated.rds")
+a549_tgfb1_kinase <- readRDS("../data/A549_Kinase_TGFB1.rds")
+a549_egf_kinase <- readRDS("../data/A549_Kinase_EGF.rds")
+a549_tnf_kinase <- readRDS("../data/A549_Kinase_TNF.rds")
+
+du145_untreated_kinase <- readRDS("../data/DU145_Kinase_Untreated.rds")
+du145_tgfb1_kinase <- readRDS("../data/DU145_Kinase_TGFB1.rds")
+du145_egf_kinase <- readRDS("../data/DU145_Kinase_EGF.rds")
+du145_tnf_kinase <- readRDS("../data/DU145_Kinase_TNF.rds")
+
+mcf7_untreated_kinase <- readRDS("../data/MCF7_Kinase_Untreated.rds")
+mcf7_tgfb1_kinase <- readRDS("../data/MCF7_Kinase_TGFB1.rds")
+mcf7_egf_kinase <- readRDS("../data/MCF7_Kinase_EGF.rds")
+mcf7_tnf_kinase <- readRDS("../data/MCF7_Kinase_TNF.rds")
+
+ovca420_untreated_kinase <- readRDS("../data/OVCA420_Kinase_Untreated.rds")
+ovca420_tgfb1_kinase <- readRDS("../data/OVCA420_Kinase_TGFB1.rds")
+ovca420_egf_kinase <- readRDS("../data/OVCA420_Kinase_EGF.rds")
+ovca420_tnf_kinase <- readRDS("../data/OVCA420_Kinase_TNF.rds")
+```
+
+Only problem is that I want Non-induced inhibition samples as well and they occur in both the untreated_kinase and in the treated_kinase subsets. I'll just remove one of them
+
+```{r}
+mergeSeurat <- function(treated_seurat, untreated_seurat){
+  cells_keep <- colnames(treated_seurat)[treated_seurat$ConditionBroad != "Untreated_Uninhibited"]
+  treated_seurat <- subset(treated_seurat, cells=cells_keep)
+  seurat <- merge(treated_seurat, untreated_seurat,
+                  add.cell.ids = c("Untreated", "Treated"))
+  seurat <- NormalizeData(seurat)
+  seurat <- FindVariableFeatures(seurat, selection.method="vst",
+                                 nfeatures=2000)
+  seurat <- ScaleData(seurat, features=VariableFeatures(seurat),
+                      vars.to.regress=c("percent.mito", "nCount_RNA",
+                                        "S.Score", "G2M.Score"))
+  seurat <- RunPCA(seurat, verbose=F)
+  seurat <- RunUMAP(seurat, dims=1:30)
+}
+```
+
+
+## Write test
+```{r}
+modelGene<- function(seurat_object, gene, treatment){
+  df <- seurat_object@meta.data
+  df$exp <- seurat_object[["RNA"]]@data[gene,]
+  df$Treatment <- factor(df$Treatment, levels=c("Untreated", treatment))
+  df$Drug[df$Drug==paste0("Uninhibited_", treatment)] <- "aaUninhibited" #Just forcing intercept variable
+  df$Drug[df$Drug=="Uninhibited_Untreated"] <- "aaUninhibited"
+  
+  model <- lm(exp ~ Treatment*Drug, data=df)
+  return(model)
+}
+
+getVarGenes <- function(seurat_object, n){
+  var_table <- seurat_object[["RNA"]]@meta.features
+  var_table$Gene <- rownames(var_table)
+  var_table <- arrange(var_table, desc(vst.variance.standardized))
+  var_genes <- var_table$Gene[1:n]
+  return(var_genes)
+}
+
+testGenes <- function(treated_seurat, untreated_seurat, n_var_genes,
+                      cell_line, treatment){
+  seurat <- mergeSeurat(treated_seurat, untreated_seurat)
+  
+  genes_test <- getVarGenes(seurat, n_var_genes) # Only test the top 5k variable genes
+  
+  #There are 46 possible oefficients in total--some datasets are missing an inhibitor and end up with less
+  #I have to do some really inconvenient indexing here to make this work
+  coefficients <- matrix(0, nrow=n_var_genes, ncol=50)
+  rownames(coefficients) <- 1:nrow(coefficients)
+  colnames(coefficients) <- 1:ncol(coefficients)
+  
+  pvals <- matrix(1, nrow=n_var_genes, ncol=50) #want pval of undetected genes to be 1 when it can't be modelled
+  rownames(pvals) <- 1:nrow(pvals)
+  colnames(pvals) <- 1:ncol(pvals)
+  
+  for(i in 1:length(genes_test)){
+    model <- modelGene(seurat, genes_test[i], treatment)
+    result_length <- length(summary(model)$coefficients[,1])
+    coefficients[i,1:result_length] <- summary(model)$coefficients[,1]
+    pvals[i,1:result_length] <- summary(model)$coefficients[,4]
+    rownames(coefficients)[i] <- genes_test[i]
+    rownames(pvals)[i] <- genes_test[i]
+    colnames(coefficients)[1:result_length] <- names(summary(model)$coefficients[,1])
+    colnames(pvals)[1:result_length] <- names(summary(model)$coefficients[,4])
+  }
+  
+  pvals <- pvals[,1:result_length]
+  coefficients <- coefficients[,1:result_length]
+  
+  # Adjust p-values
+  pvals.adj <- p.adjust(pvals, method="fdr")
+  pvals.adj <- matrix(pvals.adj, nrow = nrow(pvals), ncol = ncol(pvals))
+  rownames(pvals.adj) <- rownames(pvals)
+  colnames(pvals.adj) <- colnames(pvals)
+  
+  #Save model information
+  write.csv(pvals.adj, file=paste0("../output/kinase_differential_expression/", 
+                               cell_line, "_", treatment, "_padj.csv"),
+            quote=F)
+  write.csv(coefficients, file=paste0("../output/kinase_differential_expression/", 
+                                      cell_line, "_", treatment, "_coefficients.csv"),
+            quote=F)
+  
+  # Create binarized matrix of significant hits
+  # Significant = significant interaction coefficient with opposite sign to EMT treatment coefficient
+  # ie. Drugs whose interaction coefficient counteracts the effects of the EMT inducer
+  # Note: Only consider genes with significant EMT treatment coefficient
+  sig_hits <- -log10(pvals.adj)
+  sig_hits[which(sig_hits < (-log10(0.05)))] <- 0
+  sig_hits[which(sig_hits > (-log10(0.05)))] <- 1
+  sig_hits <- sig_hits[which(sig_hits[,2] == 1),] #Second column is EMT treatment coefficient
+  
+  # Clean up matrix to only be interaction p-vals
+  # Will find the columns that correspond to interaction coefficients (name contains a ":")
+  interaction_coef_index <- grep(":", colnames(sig_hits))
+  temp_mat <- coefficients[rownames(sig_hits),]
+  temp_mat <- temp_mat[,interaction_coef_index] * temp_mat[,2] #Multiply interaction coefficients against EMT inducer's (opposite effects result in negative value)
+  temp_mat[temp_mat > 0] <- 0
+  temp_mat[temp_mat < 0] <- 1
+  # Only want interaction coefficients that were actually significant
+  # Sig hits is a binarized matrix
+  # Multiply the two together, non-significant coefficients will have a 0 in the binarized pvalue matrix
+  temp_mat <- temp_mat*sig_hits[,interaction_coef_index]
+  return(temp_mat)
+}
+```
+
+
+```{r}
+a549_tgfb1_inhibition <- testGenes(a549_tgfb1_kinase, a549_untreated_kinase,
+                                   5000, "A549", "TGFB1")
+a549_egf_inhibition <- testGenes(a549_egf_kinase, a549_untreated_kinase,
+                                   5000, "A549", "EGF")
+a549_tnf_inhibition <- testGenes(a549_tnf_kinase, a549_untreated_kinase,
+                                   5000, "A549", "TNF")
+
+du145_tgfb1_inhibition <- testGenes(du145_tgfb1_kinase, du145_untreated_kinase,
+                                   5000, "DU145", "TGFB1")
+du145_egf_inhibition <- testGenes(a549_egf_kinase, du145_untreated_kinase,
+                                   5000, "DU145", "EGF")
+du145_tnf_inhibition <- testGenes(a549_tnf_kinase, du145_untreated_kinase,
+                                   5000, "DU145", "TNF")
+
+mcf7_tgfb1_inhibition <- testGenes(mcf7_tgfb1_kinase, mcf7_untreated_kinase,
+                                   5000, "MCF7", "TGFB1")
+mcf7_egf_inhibition <- testGenes(mcf7_egf_kinase, mcf7_untreated_kinase,
+                                   5000, "MCF7", "EGF")
+mcf7_tnf_inhibition <- testGenes(mcf7_tnf_kinase, mcf7_untreated_kinase,
+                                   5000, "MCF7", "TNF")
+
+ovca420_tgfb1_inhibition <- testGenes(ovca420_tgfb1_kinase, ovca420_untreated_kinase,
+                                   5000, "OVCA420", "TGFB1")
+ovca420_egf_inhibition <- testGenes(ovca420_egf_kinase, ovca420_untreated_kinase,
+                                   5000, "OVCA420", "EGF")
+ovca420_tnf_inhibition <- testGenes(ovca420_tnf_kinase, ovca420_untreated_kinase,
+                                   5000, "OVCA420", "TNF")
+```
+
+# Quick binarized heatmaps
+```{r}
+binarizedHeatmap <- function(mat, filename){ #add col_breaks if desired
+  #quickly just fix colnames
+  colnames(mat) <- str_replace(colnames(mat), ".*Drug", "")
+  heatmap <- pheatmap(t(mat),
+                      color = c("grey95", "firebrick"),
+                      legend=F,
+                      cluster_cols=T,
+                      cluster_rows=T,
+                      treeheight_row=0,
+                      treeheight_col=25,
+                      show_colnames=F,
+                      show_rownames=T,
+                      #cutree_col=col_breaks,
+                      clustering_method="ward.D2",
+                      filename=paste0("../figs/KinaseInhibition/", filename, "_binarized_interaction_hits.png"),
+                      width=6, height=3.5)
+}
+```
+
+```{r}
+a549_tgfb1_heatmap <- binarizedHeatmap(a549_tgfb1_inhibition, "a549_tgfb1")
+a549_egf_heatmap <- binarizedHeatmap(a549_egf_inhibition, "a549_egf")
+a549_tnf_heatmap <- binarizedHeatmap(a549_tnf_inhibition, "a549_tnf")
+
+du145_tgfb1_heatmap <- binarizedHeatmap(du145_tgfb1_inhibition, "du145_tgfb1")
+du145_egf_heatmap <- binarizedHeatmap(du145_egf_inhibition, "du145_egf")
+du145_tnf_heatmap <- binarizedHeatmap(du145_tnf_inhibition, "du145_tnf")
+
+mcf7_tgfb1_heatmap <- binarizedHeatmap(mcf7_tgfb1_inhibition, "mcf7_tgfb1")
+mcf7_egf_heatmap <- binarizedHeatmap(mcf7_egf_inhibition, "mcf7_egf")
+mcf7_tnf_heatmap <- binarizedHeatmap(mcf7_tnf_inhibition, "mcf7_tnf")
+
+ovca420_tgfb1_heatmap <- binarizedHeatmap(ovca420_tgfb1_inhibition, "ovca420_tgfb1")
+ovca420_egf_heatmap <- binarizedHeatmap(ovca420_egf_inhibition, "ovca420_egf")
+ovca420_tnf_heatmap <- binarizedHeatmap(ovca420_tnf_inhibition, "ovca420_tnf")
+```
+
+I have looked into the EMT inducer coefficient values for the genes that are not significant for any interaction coefficeints. They are *not* simply genes with low EMT coefficients
+
+# Assess effects on uninduced cells
+For this, I'll just set a filter that it has to have a significant coefficient and the value must be 
+
+## Heatmap and get counts
+```{r}
+binarizedHeatmapUntreated <- function(sample){
+  coef <- read.csv(paste0("../output/kinase_differential_expression/", sample, "_coefficients.csv"),
+                 row.names=1)
+  pval <- read.csv(paste0("../output/kinase_differential_expression/", sample, "_padj.csv"),
+                 row.names=1)
+  
+  pval <- as.matrix(pval)
+  pval <- -log10(pval)
+  pval[which(pval < (-log10(0.05)))] <- 0
+  pval[which(pval > (-log10(0.05)))] <- 1
+  pval <- pval[,-1] #remove intercept
+  
+  # Remove interaction hits
+  interaction_coef_index <- grep("Treatment", colnames(pval))
+  pval <- pval[,-interaction_coef_index]
+  
+  # Only include genes with sig hits somewhere
+  pval <- pval[which(rowSums(pval) != 0),]
+  
+  #rename columns
+  colnames(pval) <- str_replace(colnames(pval), ".*Drug", "")
+  colnames(pval) <- str_replace(colnames(pval), "\\.", " ")
+  
+  heatmap <- pheatmap(t(pval),
+                      color = c("grey95", "firebrick"),
+                      legend=F,
+                      cluster_cols=T,
+                      cluster_rows=T,
+                      treeheight_row=0,
+                      treeheight_col=25,
+                      show_colnames=F,
+                      show_rownames=T,
+                      #cutree_col=col_breaks,
+                      clustering_method="ward.D2",
+                      filename=paste0("../figs/KinaseInhibition/", sample, 
+                                      "_untreated_hits.png"),
+                      width=6, height=3.5)
+  
+  sums <- colSums(pval)
+  return(sums)
+}
+```
+
+So technically we only have one untreated population per cell line, but because we have three different conditions for each cell line, we've also used three different sets of the top 5000 variable genes for differential expression testing, and there's also the possibility of things shifting because 
+```{r}
+a549_untreated_1 <- binarizedHeatmapUntreated("A549_TGFB1")
+a549_untreated_2 <- binarizedHeatmapUntreated("A549_EGF")
+a549_untreated_3 <- binarizedHeatmapUntreated("A549_TNF")
+
+du145_untreated_1 <- binarizedHeatmapUntreated("DU145_TGFB1")
+du145_untreated_2 <- binarizedHeatmapUntreated("DU145_EGF")
+du145_untreated_3 <- binarizedHeatmapUntreated("DU145_TNF")
+
+mcf7_untreated_1 <- binarizedHeatmapUntreated("MCF7_TGFB1")
+mcf7_untreated_2 <- binarizedHeatmapUntreated("MCF7_EGF")
+mcf7_untreated_3 <- binarizedHeatmapUntreated("MCF7_TNF")
+
+ovca420_untreated_1 <- binarizedHeatmapUntreated("OVCA420_TGFB1")
+ovca420_untreated_2 <- binarizedHeatmapUntreated("OVCA420_EGF")
+ovca420_untreated_3 <- binarizedHeatmapUntreated("OVCA420_TNF")
+```
+
+They are incredibly well correlated
+```{r}
+plot(a549_untreated_1, a549_untreated_2)
+```
+
+I think it's fair to take the average of the three models as a reasonable count of the number of genes affected
+
+```{r}
+untreated_counts <- data.frame(A549 = (a549_untreated_1 + a549_untreated_2 + a549_untreated_3) / 3,
+                               DU145 = (du145_untreated_1 + du145_untreated_2 + du145_untreated_3) / 3,
+                               MCF7 = (mcf7_untreated_1 + mcf7_untreated_2 + mcf7_untreated_3) / 3,
+                               OVCA420 = (ovca420_untreated_1 + ovca420_untreated_2 + ovca420_untreated_3) / 3)
+rownames(untreated_counts) <- names(a549_untreated_1)
+```
+
+```{r}
+untreated_counts_cap <- untreated_counts
+untreated_counts_cap[untreated_counts_cap > 500] <- 500
+
+untreated_heatmap <- pheatmap(untreated_counts_cap,
+                              color = viridis(100),
+                              show_rownames=T,
+                              show_colnames=T,
+                              border_color="black",
+                              cluster_rows=T,
+                              cluster_cols=T,
+                              treeheight_row=0,
+                              treeheight_col=0,
+                              clustering_method="ward.D2",
+                              filename = "../figs/KinaseInhibition/heatmap_inhibitor_untreated_counts.png",
+                              width=2.75, height=4.25)
+```
+
+
+# Compare inhibitor counts across conditions
+First issue to deal with is that not all results from the previous function have the same columns due to insufficient data to model some interaction terms.
+
+Second issue is that all the columns are named differently (based on treatment)
+
+Plan:
+1) colSums each dataset
+2) Remove the TreatmentXXX: part of each name
+3) Merge data frames
+
+## 1) Inhibitor counts
+We'll represent this as the proportion of total genes that the inducer affects
+```{r}
+a549_tgfb1_counts <- as.data.frame(colSums(a549_tgfb1_inhibition) / nrow(a549_tgfb1_inhibition))
+a549_egf_counts <- as.data.frame(colSums(a549_egf_inhibition) / nrow(a549_egf_inhibition))
+a549_tnf_counts <- as.data.frame(colSums(a549_tnf_inhibition) / nrow(a549_tnf_inhibition))
+
+du145_tgfb1_counts <- as.data.frame(colSums(du145_tgfb1_inhibition) / nrow(du145_tgfb1_inhibition))
+du145_egf_counts <- as.data.frame(colSums(du145_egf_inhibition) / nrow(du145_egf_inhibition))
+du145_tnf_counts <- as.data.frame(colSums(du145_tnf_inhibition) / nrow(du145_tnf_inhibition))
+
+mcf7_tgfb1_counts <- as.data.frame(colSums(mcf7_tgfb1_inhibition) / nrow(mcf7_tgfb1_inhibition))
+mcf7_egf_counts <- as.data.frame(colSums(mcf7_egf_inhibition) / nrow(mcf7_egf_inhibition))
+mcf7_tnf_counts <- as.data.frame(colSums(mcf7_tnf_inhibition) / nrow(mcf7_tnf_inhibition))
+
+ovca420_tgfb1_counts <- as.data.frame(colSums(ovca420_tgfb1_inhibition) / nrow(ovca420_tgfb1_inhibition))
+ovca420_egf_counts <- as.data.frame(colSums(ovca420_egf_inhibition) / nrow(ovca420_egf_inhibition))
+ovca420_tnf_counts <- as.data.frame(colSums(ovca420_tnf_inhibition) / nrow(ovca420_tnf_inhibition))
+```
+
+## 2) Rename rownames
+```{r}
+renameRows <- function(df, name){
+  colnames(df) <- name
+  df$Drug <- str_replace(rownames(df), ".*Drug", "")
+  return(df)
+}
+```
+
+```{r}
+a549_tgfb1_counts <- renameRows(a549_tgfb1_counts, "A549_TGFB1")
+a549_egf_counts <- renameRows(a549_egf_counts, "A549_EGF")
+a549_tnf_counts <- renameRows(a549_tnf_counts, "A549_TNF")
+
+du145_tgfb1_counts <- renameRows(du145_tgfb1_counts, "DU145_TGFB1")
+du145_egf_counts <- renameRows(du145_egf_counts, "DU145_EGF")
+du145_tnf_counts <- renameRows(du145_tnf_counts, "DU145_TNF")
+
+mcf7_tgfb1_counts <- renameRows(mcf7_tgfb1_counts, "MCF7_TGFB1")
+mcf7_egf_counts <- renameRows(mcf7_egf_counts, "MCF7_EGF")
+mcf7_tnf_counts <- renameRows(mcf7_tnf_counts, "MCF7_TNF")
+
+ovca420_tgfb1_counts <- renameRows(ovca420_tgfb1_counts, "OVCA420_TGFB1")
+ovca420_egf_counts <- renameRows(ovca420_egf_counts, "OVCA420_EGF")
+ovca420_tnf_counts <- renameRows(ovca420_tnf_counts, "OVCA420_TNF")
+```
+
+## 3) Merge data frames
+```{r}
+inhibitor_counts <- Reduce(function(...) merge(..., all=T, by="Drug"),
+                           list(a549_tgfb1_counts, a549_egf_counts, a549_tnf_counts,
+                                du145_tgfb1_counts, du145_egf_counts, du145_tnf_counts,
+                                mcf7_tgfb1_counts, mcf7_egf_counts, mcf7_tnf_counts,
+                                ovca420_tgfb1_counts, ovca420_egf_counts, ovca420_tnf_counts))
+rownames(inhibitor_counts) <- inhibitor_counts$Drug
+inhibitor_counts$Drug <- NULL
+
+inhibitor_counts <- as.matrix(inhibitor_counts)
+inhibitor_counts[is.na(inhibitor_counts)] <- 0
+
+inhibitor_heatmap <- pheatmap(inhibitor_counts,
+                              color = c(viridis::viridis(100), viridis::viridis(100)[rep(100, 75)]),
+                              border_color="black",
+                              cluster_rows=T,
+                              cluster_cols=F,
+                              clustering_method = "ward.D2",
+                              treeheight_row = 0,
+                              #treeheight_col = 25,
+                              show_colnames=T,
+                              show_rownames=T,
+                              filename = "../figs/KinaseInhibition/heatmap_inhibitor_interaction_counts.png",
+                              width=5, height=6)
+```
+
+# Show dynamics of specific inhibitors
+Things I'm interesting in showing
+
+1) For a given condition + inhibitor, show pseudobulk expression untreated, EMT-induced, and inhibited
+2) For all cells, calculate pseudotime value from psupertime models, show distribution of cells along pseudotime axis
+3) Rank genes by activation time--do inhibitors preferentially block expression AFTER some point in pseudotime
+
+## 1.1) Pseudobulk of individual inhibitors
+Goal here is to find all the genes that the EMT inducer changes, calculate the average for the three conditions and simply plot them out as a heatmap
+
+```{r}
+getPseudobulk <- function(cell_line, treatment, inhibitor){
+  p_values <- read.csv(paste0("../output/kinase_differential_expression/", cell_line, "_",
+                             treatment, "_padj.csv"), row.names = 1)
+  gene_hits <- rownames(p_values)[which(p_values[,2] < 0.05)]
+  
+  seurat <- readRDS(paste0("../data/", cell_line, "_Kinase_", treatment,
+                           ".rds"))
+  untreated_cells <- colnames(seurat)[seurat$ConditionBroad == "Untreated_Uninhibited"]
+  treated_cells <- colnames(seurat)[seurat$ConditionBroad == paste0(treatment, "_Uninhibited")]
+  inhibited_cells <- colnames(seurat)[seurat$Drug == inhibitor]
+  
+  untreated_avg <- rowMeans(as.matrix(seurat[["RNA"]]@data[gene_hits,untreated_cells]))
+  treated_avg <- rowMeans(as.matrix(seurat[["RNA"]]@data[gene_hits,treated_cells]))
+  inhibited_avg <- rowMeans(as.matrix(seurat[["RNA"]]@data[gene_hits,inhibited_cells]))
+  
+  exp_avg <- data.frame(Untreated = untreated_avg,
+                        Treated = treated_avg,
+                        Inhibited = inhibited_avg)
+  colnames(exp_avg) <- c("Untreated", treatment, paste0(treatment, "_", inhibitor))
+  rownames(exp_avg) <- gene_hits
+  exp_avg <- as.matrix(exp_avg)
+  
+  exp_mat <- t(scale(t(exp_avg), scale=T, center=T))
+  exp_heatmap <- pheatmap(t(exp_mat),
+                        color = viridis(100),
+                        cluster_rows=F,
+                        cluster_cols=T,
+                        cutree_cols = 4,
+                        treeheight_col = 25,
+                        clustering_method="ward.D2",
+                        show_rownames=T,
+                        show_colnames=F,
+                        legend = F,
+                        filename=paste0("../figs/KinaseInhibition/pseudobulk_",
+                                        cell_line, "_", treatment, "_", inhibitor, ".png"),
+                        width=6, height=1.25)
+  return(exp_heatmap)
+}
+```
+
+```{r}
+a549_tgfb1_necrostatin <- getPseudobulk("A549", "TGFB1", "Necrostatin-5")
+a549_tgfb1_ly36497 <- getPseudobulk("A549", "TGFB1", "LY364947")
+a549_egf_ly36497 <- getPseudobulk("A549", "EGF", "LY364947")
+a549_egf_erlotinib <- getPseudobulk("A549", "EGF", "Erlotinib")
+
+ovca420_tgfb1_necrostatin <- getPseudobulk("OVCA420", "TGFB1", "Necrostatin-5")
+du145_tgfb1_necrostatin <- getPseudobulk("DU145", "TGFB1", "Necrostatin-5")
+mcf7_tgfb1_necrostatin <- getPseudobulk("MCF7", "TGFB1", "Necrostatin-5")
+```
+
+### Explore uninhibited genes
+```{r}
+clusters <- as.data.frame(cutree(a549_tgfb1_necrostatin$tree_col, k=4))
+colnames(clusters) <- "Cluster"
+clusters$Gene <- rownames(clusters)
+```
+
+Cluster order
+```{r}
+unique(clusters$Cluster[a549_tgfb1_necrostatin$tree_col$order])
+```
+
+#### Look at expression dynamics of each cluster
+```{r}
+a549_tgfb1_fit <- read.csv("../output/pseudotime/a549_tgfb1_fit.csv", row.names=1)
+```
+
+```{r}
+genes <- filter(clusters, Cluster==1)$Gene
+genes <- genes[which(genes %in% rownames(a549_tgfb1_fit))]
+pheatmap(as.matrix(a549_tgfb1_fit)[genes,],
+         color = magma(100),
+         cluster_rows=T,
+         cluster_cols=F,
+         clustering_method="ward.D2",
+         show_rownames=F,
+         show_colnames=F)
+```
+
+No obvious pattern
+
+#### Look at putative TFs
+```{r}
+library(RcisTarget)
+```
+
+```{r}
+motifRankings <- importRankings("~/Data/GeneLists/cisTarget/hg19-tss-centered-10kb-10species.mc9nr.feather")
+```
+
+```{r}
+motifAnnotations <- importAnnotations("~/Data/GeneLists/cisTarget/motifs-v9-nr.hgnc-m0.001-o0.0.tbl.txt")
+```
+
+```{r}
+getTF <- function(genes){
+  gene_list <- list(SigGenes=genes)
+  motifEnrichmentTable_wGenes <- cisTarget(gene_list, 
+         motifRankings,
+         motifAnnot=motifAnnotations,
+         nesThreshold=0)
+  return(motifEnrichmentTable_wGenes)
+}
+```
+
+```{r}
+cluster1 <- getTF(filter(clusters, Cluster==1)$Gene)
+cluster2 <- getTF(filter(clusters, Cluster==2)$Gene)
+cluster3 <- getTF(filter(clusters, Cluster==3)$Gene)
+cluster4 <- getTF(filter(clusters, Cluster==4)$Gene)
+```
+
+```{r}
+#Cluster 1 vs. 2
+common_motifs <- cluster1$motif[which(cluster1$motif %in% cluster2$motif)]
+cluster1_slim <- cluster1[,c("motif", "NES", "TF_highConf")]
+cluster2_slim <- cluster2[,c("motif", "NES", "TF_highConf")]
+cluster <- left_join(cluster1_slim, cluster2_slim, by="motif")
+cluster$NES_diff <- cluster$NES.x - cluster$NES.y
+cluster <- arrange(cluster, desc(NES_diff))
+cluster$Index <- 1:nrow(cluster)
+cluster <- na.omit(cluster)
+```
+
+```{r}
+nes_plot <- ggplot(cluster, aes(x=Index, y=NES_diff)) +
+  geom_point(size=1, color="black") +
+  ylab("NES Difference") + xlab("Motif Rank") +
+  theme_classic() +
+  theme(axis.text=element_text(size=10, color="black"),
+        axis.title=element_text(size=12))
+ggsave(nes_plot, file="../figs/KinaseInhibition/A549_TGFB1_Necrostatin5_Cluster1v3_NES_diff.png",
+       width=6, height=2)
+```
+
+
+## 1.2) Pseudobulk of all inhibitors for a given cell line + EMT inducer
+
+```{r}
+getPseudobulk <- function(cell_line, treatment){
+  p_values <- read.csv(paste0("../output/kinase_differential_expression/", cell_line, "_",
+                             treatment, "_padj.csv"), row.names = 1)
+  gene_hits <- rownames(p_values)[which(p_values[,2] < 0.05)]
+  
+  seurat <- readRDS(paste0("../data/", cell_line, "_Kinase_", treatment,
+                           ".rds"))
+  
+  drug_list <- unique(seurat$Drug)
+  getMean <- function(drug){
+    cell_list <- colnames(seurat)[seurat$Drug == drug]
+    avg_exp <- rowMeans(as.matrix(seurat[["RNA"]]@data[gene_hits, cell_list]))
+  }
+  
+  means <- lapply(drug_list, getMean)
+  means <- do.call(rbind, means)
+  rownames(means) <- drug_list
+  rownames(means)[rownames(means)=="Uninhibited_Untreated"] <- "Untreated"
+  rownames(means)[rownames(means)==paste0("Uninhibited_", treatment)] <- treatment
+  
+  means <- scale(means, scale=T, center=T)
+  means[means>2] <- 2
+  means[means<(-2)] <- (-2)
+  
+  mean_heatmap <- pheatmap(means,
+                        color = viridis(100),
+                        cluster_rows=T,
+                        cluster_cols=T,
+                        clustering_method="ward.D2",
+                        show_rownames=T,
+                        show_colnames=F,
+                        filename=paste0("../figs/KinaseInhibition/pseudobulk_",
+                                        cell_line, "_", treatment, "_AllInhibitors.png"),
+                        width=8, height=3.85)
+  return(mean_heatmap)
+}
+```
+
+```{r}
+getPseudobulk("A549", "TGFB1")
+getPseudobulk("A549", "EGF")
+getPseudobulk("A549", "TNF")
+
+getPseudobulk("DU145", "TGFB1")
+getPseudobulk("DU145", "EGF") # Currently throws error
+getPseudobulk("DU145", "TNF") # Throws error
+
+getPseudobulk("MCF7", "TGFB1")
+getPseudobulk("MCF7", "EGF")
+getPseudobulk("MCF7", "TNF")
+
+getPseudobulk("OVCA420", "TGFB1")
+getPseudobulk("OVCA420", "EGF")
+getPseudobulk("OVCA420", "TNF")
+```
+
+## 2) Calculate pseudotime for all cells
+Need to merge expression matrices for make_x_data(), then use the coefficients from the psupertime model we had built before and multiply them against the smooth kinase inhibitor data
+```{r}
+getPseudotime <- function(cell_line, treatment, psuper_name){
+  psuper_obj <- readRDS(paste0("../output/pseudotime/", psuper_name, "_psuper.rds"))
+  seurat_kinase <- readRDS(paste0("../data/", cell_line, "_Kinase_", treatment, ".rds"))
+  
+  exp <- as.matrix(seurat_kinase[["RNA"]]@data)
+  temp_params <- list(smooth=TRUE, scale=TRUE)
+  exp_processed <- psupertime:::make_x_data(exp, VariableFeatures(seurat_kinase),
+                                            temp_params)
+  
+  new_psuper <- project_onto_psupertime(psuper_obj, new_x=exp_processed,
+                                        new_y=seurat_kinase$Drug, process=F)
+  rownames(new_psuper) <- colnames(seurat_kinase)
+  return(new_psuper)
+}
+```
+
+```{r}
+a549_tgfb1_kinase_psuper <- getPseudotime("A549", "TGFB1", "a549_tgfb1")
+a549_egf_kinase_psuper <- getPseudotime("A549", "EGF", "a549_egf")
+a549_tnf_kinase_psuper <- getPseudotime("A549", "TNF", "a549_tnf")
+
+du145_tgfb1_kinase_psuper <- getPseudotime("DU145", "TGFB1", "du145_tgfb1")
+du145_egf_kinase_psuper <- getPseudotime("DU145", "EGF", "du145_egf")
+du145_tnf_kinase_psuper <- getPseudotime("DU145", "TNF", "du145_tnf")
+
+mcf7_tgfb1_kinase_psuper <- getPseudotime("MCF7", "TGFB1", "mcf7_tgfb1")
+mcf7_egf_kinase_psuper <- getPseudotime("MCF7", "EGF", "mcf7_egf")
+mcf7_tnf_kinase_psuper <- getPseudotime("MCF7", "TNF", "mcf7_tnf")
+
+ovca420_tgfb1_kinase_psuper <- getPseudotime("OVCA420", "TGFB1", "ovca420_tgfb1")
+ovca420_egf_kinase_psuper <- getPseudotime("OVCA420", "EGF", "ovca420_egf")
+ovca420_tnf_kinase_psuper <- getPseudotime("OVCA420", "TNF", "ovca420_tnf")
+
+saveRDS(a549_tgfb1_kinase_psuper, file = "../output/pseudotime/a549_tgfb1_kinase_psuper.rds")
+saveRDS(a549_egf_kinase_psuper, file = "../output/pseudotime/a549_egf_kinase_psuper.rds")
+saveRDS(a549_tnf_kinase_psuper, file = "../output/pseudotime/a549_tnf_kinase_psuper.rds")
+
+saveRDS(du145_tgfb1_kinase_psuper, file = "../output/pseudotime/du145_tgfb1_kinase_psuper.rds")
+saveRDS(du145_egf_kinase_psuper, file = "../output/pseudotime/du145_egf_kinase_psuper.rds")
+saveRDS(du145_tnf_kinase_psuper, file = "../output/pseudotime/du145_tnf_kinase_psuper.rds")
+
+saveRDS(mcf7_tgfb1_kinase_psuper, file = "../output/pseudotime/mcf7_tgfb1_kinase_psuper.rds")
+saveRDS(mcf7_egf_kinase_psuper, file = "../output/pseudotime/mcf7_egf_kinase_psuper.rds")
+saveRDS(mcf7_tnf_kinase_psuper, file = "../output/pseudotime/mcf7tnf_kinase_psuper.rds")
+
+saveRDS(ovca420_tgfb1_kinase_psuper, file = "../output/pseudotime/ovca420_tgfb1_kinase_psuper.rds")
+saveRDS(ovca420_egf_kinase_psuper, file = "../output/pseudotime/ovca420_egf_kinase_psuper.rds")
+saveRDS(ovca420_tnf_kinase_psuper, file = "../output/pseudotime/ovca420_tnf_kinase_psuper.rds")
+```
+
+### Calculate pseudotime values for untreated
+If you simply use the psupertime model of, for example, the TGFB1-treated on the untreated cells alone
+you end up in a situation where the baseline levels are different. This should be fixed if you actually
+merge the untreated and treated objects and process together
+
+```{r}
+getPseudotime <- function(cell_line, treatment, psuper_name){
+  psuper_obj <- readRDS(paste0("../output/pseudotime/", psuper_name, "_psuper.rds"))
+  seurat_kinase <- readRDS(paste0("../data/", cell_line, "_Kinase_", treatment, ".rds"))
+  seurat_untreated_kinase <- readRDS(paste0("../data/", cell_line, "_Kinase_Untreated.rds"))
+  seurat <- merge(seurat_kinase, seurat_untreated_kinase)
+  
+  exp <- as.matrix(seurat[["RNA"]]@data)
+  temp_params <- list(smooth=TRUE, scale=TRUE)
+  exp_processed <- psupertime:::make_x_data(exp, VariableFeatures(seurat_kinase), temp_params) #all genes of the psupertime model are within var genes
+  
+  new_psuper <- project_onto_psupertime(psuper_obj, new_x=exp_processed,
+                                        new_y=seurat$Drug, process=F)
+  rownames(new_psuper) <- colnames(c(seurat_kinase, seurat_untreated_kinase))
+  new_psuper$Treated <- c(rep(treatment, ncol(seurat_kinase)), 
+                          rep("Untreated", ncol(seurat_untreated_kinase)))
+  return(new_psuper)
+}
+```
+
+For now, we're only using this for comparing TGFB1-treated and untreated, so we only use the TGFB1 psupertime model
+```{r}
+a549_untreated_kinase_psuper <- getPseudotime("A549", "TGFB1", "a549_tgfb1")
+du145_untreated_kinase_psuper <- getPseudotime("DU145", "TGFB1", "du145_tgfb1")
+mcf7_untreated_kinase_psuper <- getPseudotime("MCF7", "TGFB1", "mcf7_tgfb1")
+ovca420_untreated_kinase_psuper <- getPseudotime("A549", "TGFB1", "ovca420_tgfb1")
+
+saveRDS(a549_untreated_kinase_psuper, file = "../output/pseudotime/a549_untreated_kinase_psuper.rds")
+saveRDS(du145_untreated_kinase_psuper, file = "../output/pseudotime/du145_untreated_kinase_psuper.rds")
+saveRDS(mcf7_untreated_kinase_psuper, file = "../output/pseudotime/mcf7_untreated_kinase_psuper.rds")
+saveRDS(ovca420_untreated_kinase_psuper, file = "../output/pseudotime/ovca420_untreated_kinase_psuper.rds")
+```
+
+#### Special case of TGFB1 + Untreated in same plot
+```{r}
+pseudoBoxplot <- function(data, cell_line, treatment){
+  data$Treated <- factor(data$Treated, levels=c("Untreated", treatment))
+  data$label_input <- as.character(data$label_input)
+  data$label_input[data$label_input=="Uninhibited_Untreated"] <- "a1"
+  data$label_input[data$label_input==paste0("Uninhibited_", treatment)] <- "a2"
+  data$label_input <- factor(data$label_input)
+  
+  plot <- ggplot(data, aes(x=label_input, y=psuper)) + 
+    geom_boxplot(aes(fill=Treated), outlier.size=0.5) +
+    xlab("") + ylab("Pseudotime") +
+    scale_x_discrete(labels=c("a1" = "Untreated", "a2" = treatment)) +
+    scale_fill_manual(values=c("grey65", RColorBrewer::brewer.pal(4, "Dark2")[2]))+
+    theme_bw() +
+    theme(axis.text=element_text(angle=45, hjust=1, color="black"))
+  ggsave(plot, filename = paste0("../figs/KinaseInhibition/Pseudotime_", 
+                                 cell_line, "_", treatment,  "_withUntreated.png"),
+         dpi=600, width=8.5, height=3.5)
+  plot
+}
+```
+
+```{r}
+pseudoBoxplot(a549_untreated_kinase_psuper, "A549", "TGFB1")
+pseudoBoxplot(du145_untreated_kinase_psuper, "DU145", "TGFB1")
+pseudoBoxplot(mcf7_untreated_kinase_psuper, "MCF7", "TGFB1")
+pseudoBoxplot(ovca420_untreated_kinase_psuper, "OVCA420", "TGFB1")
+```
+
+### Plot boxplots of pseudotime values
+```{r}
+pseudoBoxplot <- function(data, cell_line, treatment){
+  data$label_input <- as.character(data$label_input)
+  data$label_input[data$label_input=="Uninhibited_Untreated"] <- "a1"
+  data$label_input[data$label_input==paste0("Uninhibited_", treatment)] <- "a2"
+  data$label_input <- factor(data$label_input)
+  
+  
+  
+  plot <- ggplot(data, aes(x=label_input, y=psuper)) + 
+    geom_boxplot(fill="lightgrey", outlier.size=0.5) +
+    xlab("") + ylab("Pseudotime") +
+    scale_x_discrete(labels=c("a1" = "Untreated", "a2" = treatment)) +
+    theme_bw() +
+    theme(axis.text=element_text(angle=45, hjust=1, color="black"))
+  ggsave(plot, filename = paste0("../figs/KinaseInhibition/Pseudotime_", 
+                                 cell_line, "_", treatment,  ".png"),
+         dpi=600, width=6, height=3)
+  plot
+}
+```
+
+```{r}
+pseudoBoxplot(a549_tgfb1_kinase_psuper, "A549", "TGFB1")
+pseudoBoxplot(a549_egf_kinase_psuper, "A549", "EGF")
+pseudoBoxplot(a549_tnf_kinase_psuper, "A549", "TNF")
+
+pseudoBoxplot(du145_tgfb1_kinase_psuper, "DU145", "TGFB1")
+pseudoBoxplot(du145_egf_kinase_psuper, "DU145", "EGF")
+pseudoBoxplot(du145_tnf_kinase_psuper, "DU145", "TNF")
+
+pseudoBoxplot(mcf7_tgfb1_kinase_psuper, "MCF7", "TGFB1")
+pseudoBoxplot(mcf7_egf_kinase_psuper, "MCF7", "EGF")
+pseudoBoxplot(mcf7_tnf_kinase_psuper, "MCF7", "TNF")
+
+pseudoBoxplot(ovca420_tgfb1_kinase_psuper, "OVCA420", "TGFB1")
+pseudoBoxplot(ovca420_egf_kinase_psuper, "OVCA420", "EGF")
+pseudoBoxplot(ovca420_tnf_kinase_psuper, "OVCA420", "TNF")
+```
+
+
+
+### Plot untreated-centered pseudotime values
+I want to rescale this so that the pseudotime values 0-1 correspond to the mean untreated and EMT-induced values, respectively
+```{r}
+summarizePseudo <- function(psuper, cell_line, treatment){
+  summarized_data <- psuper %>%
+    group_by(label_input) %>%
+    summarize(pseudotime = mean(psuper))
+  summarized_data$CellLine <- cell_line
+  summarized_data$Treatment <- treatment
+  
+  #rescale
+  untreated_mean <- summarized_data$pseudotime[which(summarized_data$label_input == "Uninhibited_Untreated")]
+  summarized_data$pseudotime <- (summarized_data$pseudotime - untreated_mean)
+  treated_mean <- summarized_data$pseudotime[which(summarized_data$label_input == paste0("Uninhibited_", treatment))]
+  summarized_data$pseudotime <- summarized_data$pseudotime / treated_mean
+  
+  return(summarized_data)
+}
+```
+
+```{r}
+a549_tgfb1_summary <- summarizePseudo(a549_tgfb1_kinase_psuper, "A549", "TGFB1")
+a549_egf_summary <- summarizePseudo(a549_egf_kinase_psuper, "A549", "EGF")
+a549_tnf_summary <- summarizePseudo(a549_tnf_kinase_psuper, "A549", "TNF")
+
+du145_tgfb1_summary <- summarizePseudo(du145_tgfb1_kinase_psuper, "DU145", "TGFB1")
+du145_egf_summary <- summarizePseudo(du145_egf_kinase_psuper, "DU145", "EGF")
+du145_tnf_summary <- summarizePseudo(du145_tnf_kinase_psuper, "DU145", "TNF")
+
+mcf7_tgfb1_summary <- summarizePseudo(mcf7_tgfb1_kinase_psuper, "MCF7", "TGFB1")
+mcf7_egf_summary <- summarizePseudo(mcf7_egf_kinase_psuper, "MCF7", "EGF")
+mcf7_tnf_summary <- summarizePseudo(mcf7_tnf_kinase_psuper, "MCF7", "TNF")
+
+ovca420_tgfb1_summary <- summarizePseudo(ovca420_tgfb1_kinase_psuper, "OVCA420", "TGFB1")
+ovca420_egf_summary <- summarizePseudo(ovca420_egf_kinase_psuper, "OVCA420", "EGF")
+ovca420_tnf_summary <- summarizePseudo(ovca420_tnf_kinase_psuper, "OVCA420", "TNF")
+```
+
+```{r}
+pseudotime_summary <- bind_rows(a549_tgfb1_summary, a549_egf_summary, a549_tnf_summary,
+                                du145_tgfb1_summary, du145_egf_summary, du145_tnf_summary,
+                                mcf7_tgfb1_summary, mcf7_egf_summary, mcf7_tnf_summary,
+                                ovca420_tgfb1_summary, ovca420_egf_summary, ovca420_tnf_summary)
+
+pseudotime_summary$Condition <- paste0(pseudotime_summary$CellLine, "_", pseudotime_summary$Treatment)
+```
+
+Convert to a matrix for a heatmap
+```{r}
+pseudo_mat <- pseudotime_summary[,c("label_input", "Condition", "pseudotime")]
+pseudo_mat <- as.data.frame(spread(pseudo_mat, Condition, pseudotime))
+rownames(pseudo_mat) <- pseudo_mat$label_input
+pseudo_mat$label_input <- NULL
+pseudo_mat <- as.matrix(pseudo_mat)
+#Note: We'll cap this heatmap at 0-1 for aesthetics. Most inhibitors fall within a reasonable range
+#Though, some extend outside of it--just keep that in mind
+pseudo_mat[pseudo_mat < 0] <- 0
+pseudo_mat[pseudo_mat > 1] <- 1
+
+pseudo_mat[is.na(pseudo_mat)] <- 1
+pseudo_mat <- pseudo_mat[-which(rownames(pseudo_mat) %in% c("Uninhibited_EGF", "Uninhibited_TGFB1", 
+                                              "Uninhibited_TNF","Uninhibited_Untreated")),]
+
+pseudo_heatmap <- pheatmap(pseudo_mat,
+                           color = rev(viridis::magma(100)),
+                           border_color="black",
+                           cluster_rows=T,
+                           cluster_cols=F,
+                           clustering_method = "ward.D2",
+                           treeheight_row = 0,
+                           show_colnames=T,
+                           show_rownames=T,
+                           filename = "../figs/KinaseInhibition/heatmap_inhibitor_pseudotime_values.png",
+                           width=5, height=6)
+```
+
+
+### Plot distribution of values for individual inhibitors
+Just an example for now
+```{r}
+pseudoDist <- function(psuper, cell_line, treatment, inhibitors){
+  psuper$label_input <- as.character(psuper$label_input)
+  psuper$label_input[psuper$label_input=="Uninhibited_Untreated"] <- "a1"
+  psuper$label_input[psuper$label_input==paste0("Uninhibited_", treatment)] <- "a2"
+  psuper <- filter(psuper, label_input %in% c("a1", "a2", inhibitors))
+  psuper$label_input <- factor(psuper$label_input)
+  
+  
+  plot <- ggplot(psuper, aes(x=psuper)) +
+    geom_density(aes(fill=label_input, colour=label_input), alpha=0.25) + 
+    xlab("Pseudotime") + ylab("Density") +
+    scale_fill_discrete(labels=c("Untreated", treatment,
+                             levels(psuper$label_input)[3:length(levels(psuper$label_input))])) +
+    scale_colour_discrete(labels=c("Untreated", treatment,
+                             levels(psuper$label_input)[3:length(levels(psuper$label_input))])) +
+    scale_y_continuous(expand=c(0,0)) +
+    scale_x_continuous(expand=c(0,0)) +
+    theme_classic() +
+    theme(axis.text = element_text(size=10, colour="black"),
+          legend.title = element_blank())
+  ggsave(plot, filename=paste0("../figs/KinaseInhibition/PseudotimeDist_",
+                               cell_line, "_", treatment, "_inhibitors.png"),
+         width=7, height=2, dpi=600)
+  
+  plot
+}
+```
+
+```{r}
+#pseudoDist(a549_tgfb1_kinase_psuper, "A549", "TGFB1", c("Necrostatin-5", "LY364947"))
+pseudoDist(a549_tgfb1_kinase_psuper, "A549", "TGFB1",
+           c("Necrostatin-5", "LY364947", "BIBF 1120"))
+pseudoDist(du145_tgfb1_kinase_psuper, "DU145", "TGFB1", 
+           c("Necrostatin-5", "LY364947", "BIBF 1120"))
+pseudoDist(mcf7_tgfb1_kinase_psuper, "MCF7", "TGFB1", 
+           c("Necrostatin-5", "LY364947", "BIBF 1120"))
+pseudoDist(ovca420_tgfb1_kinase_psuper, "OVCA420", "TGFB1", 
+           c("Necrostatin-5", "LY364947", "BIBF 1120"))
+
+
+pseudoDist(a549_egf_kinase_psuper, "A549", "EGF", c("Necrostatin-5", "LY364947",
+                                                      "Erlotinib", "Gefitinib"))
+pseudoDist(ovca420_egf_kinase_psuper, "OVCA420", "EGF", c("Necrostatin-5", "LY364947",
+                                                      "Erlotinib", "Gefitinib",
+                                                      "PD 0325901"))
+```
+
+
+## 3) Identify TFs associated with differentially expressed genes
+
+### Specific inhibitor
+I'll base this on the heatmaps from above. I'll cluster the genes and then run enrichment on each
+```{r}
+a549_tgfb1_necrostatin <- getPseudobulk("A549", "TGFB1", "Necrostatin-5")
+```
+
+```{r}
+clusters <- as.data.frame(cutree(a549_tgfb1_necrostatin$tree_row, k=4))
+colnames(clusters) <- "Cluster"
+clusters$Gene <- rownames(clusters)
+table(clusters$Cluster)
+```
+
+Order of the clustering:
+```{r}
+unique(clusters$Cluster[a549_tgfb1_necrostatin$tree_row$order])
+```
+
+
+

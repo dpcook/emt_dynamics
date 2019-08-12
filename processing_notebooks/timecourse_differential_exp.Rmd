@@ -1,0 +1,480 @@
+---
+title: "EMT Timecourse - Differential Expression"
+output: html_notebook
+---
+
+# Dependencies
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(viridis)
+library(matrixStats)
+library(UpSetR)
+```
+
+# Load the data
+```{r}
+#a549 <- readRDS("../data/A549.rds")
+a549_egf <- readRDS("../data/A549_EGF.rds")
+a549_tnf <- readRDS("../data/A549_TNF.rds")
+a549_tgfb1 <- readRDS("../data/A549_TGFB1.rds")
+
+#du145 <- readRDS("../data/DU145.rds")
+du145_egf <- readRDS("../data/DU145_EGF.rds")
+du145_tnf <- readRDS("../data/DU145_TNF.rds")
+du145_tgfb1 <- readRDS("../data/DU145_TGFB1.rds")
+
+#mcf7 <- readRDS("../data/MCF7.rds")
+mcf7_egf <- readRDS("../data/MCF7_EGF.rds")
+mcf7_tnf <- readRDS("../data/MCF7_TNF.rds")
+mcf7_tgfb1 <- readRDS("../data/MCF7_TGFB1.rds")
+
+#ovca420 <- readRDS("../data/OVCA420.rds")
+ovca420_egf <- readRDS("../data/OVCA420_EGF.rds")
+ovca420_tnf <- readRDS("../data/OVCA420_TNF.rds")
+ovca420_tgfb1 <- readRDS("../data/OVCA420_TGFB1.rds")
+
+cc.genes <- readLines(con = "~/Data/GeneLists/regev_lab_cell_cycle_genes.txt")
+```
+
+
+# Differential Expression Function
+The general idea here is to pull out the expression matrix from the SCT slot.
+
+We also want to filter away the withdrawal samples for now and make a numeric "time" metadata column
+
+The approach for DGE will simply be a gam with a loess on the time covariate
+
+```{r}
+diffExp <- function(seurat_object){
+  cells_keep <- colnames(seurat_object)[-which(seurat_object$Time %in% c("8h_rm", "1d_rm", "3d_rm"))]
+  subset_seurat <- subset(seurat_object, cells=cells_keep)
+  subset_seurat$Timepoint <- as.numeric(gsub("[^0-9.-]", "", subset_seurat$Time))
+  subset_seurat$Timepoint[subset_seurat$Timepoint==8] <- 0.33 #8hrs converted to fraction of a day
+  
+  exp <- as.matrix(subset_seurat[["SCT"]]@data) # Can switch to genome-wide soon
+  gam <- apply(exp, 1, function(x){
+    data <- data.frame(exp=x, timepoint = subset_seurat$Timepoint)
+    temp <- gam(exp ~ ns(timepoint, df=3), data=data)
+    res <- data.frame(Intercept=temp$coefficients[1],
+                      Spline_1 = temp$coefficients[2],
+                      Spline_2 = temp$coefficients[3],
+                      Spline_3 = temp$coefficients[4],
+                      pval = summary(temp)[4][[1]][1,5])
+  })
+  results <- do.call("rbind", gam)
+  results$qval <- p.adjust(results$pval, method="fdr")
+  results$Gene <- rownames(results)
+  return(results)
+}
+```
+
+```{r}
+a549_tgfb1_dge <- diffExp(a549_tgfb1)
+a549_egf_dge <- diffExp(a549_egf)
+a549_tnf_dge <- diffExp(a549_tnf)
+
+du145_tgfb1_dge <- diffExp(du145_tgfb1)
+du145_egf_dge <- diffExp(du145_egf)
+du145_tnf_dge <- diffExp(du145_tnf)
+
+mcf7_tgfb1_dge <- diffExp(mcf7_tgfb1)
+mcf7_egf_dge <- diffExp(mcf7_egf)
+mcf7_tnf_dge <- diffExp(mcf7_tnf)
+
+ovca420_tgfb1_dge <- diffExp(ovca420_tgfb1)
+ovca420_egf_dge <- diffExp(ovca420_egf)
+ovca420_tnf_dge <- diffExp(ovca420_tnf)
+```
+
+```{r}
+write.csv(a549_tgfb1_dge, file="../output/dge_a549_tgfb1.csv", quote=F)
+write.csv(a549_egf_dge, file="../output/dge_a549_egf.csv", quote=F)
+write.csv(a549_tnf_dge, file="../output/dge_a549_tnf.csv", quote=F)
+
+write.csv(du145_tgfb1_dge, file="../output/dge_du145_tgfb1.csv", quote=F)
+write.csv(du145_egf_dge, file="../output/dge_du145_egf.csv", quote=F)
+write.csv(du145_tnf_dge, file="../output/dge_du145_tnf.csv", quote=F)
+
+write.csv(mcf7_tgfb1_dge, file="../output/dge_mcf7_tgfb1.csv", quote=F)
+write.csv(mcf7_egf_dge, file="../output/dge_mcf7_egf.csv", quote=F)
+write.csv(mcf7_tnf_dge, file="../output/dge_mcf7_tnf.csv", quote=F)
+
+write.csv(ovca420_tgfb1_dge, file="../output/dge_ovca420_tgfb1.csv", quote=F)
+write.csv(ovca420_egf_dge, file="../output/dge_ovca420_egf.csv", quote=F)
+write.csv(ovca420_tnf_dge, file="../output/dge_ovca420_tnf.csv", quote=F)
+```
+
+If you need to read in the data
+```{r}
+a549_tgfb1_dge <- read.csv("../output/dge_a549_tgfb1.csv", stringsAsFactors = F)
+a549_egf_dge <- read.csv("../output/dge_a549_egf.csv", stringsAsFactors = F)
+a549_tnf_dge <- read.csv("../output/dge_a549_tnf.csv", stringsAsFactors = F)
+
+du145_tgfb1_dge <- read.csv("../output/dge_du145_tgfb1.csv", stringsAsFactors = F)
+du145_egf_dge <- read.csv("../output/dge_du145_egf.csv", stringsAsFactors = F)
+du145_tnf_dge <- read.csv("../output/dge_du145_tnf.csv", stringsAsFactors = F)
+
+mcf7_tgfb1_dge <- read.csv("../output/dge_mcf7_tgfb1.csv", stringsAsFactors = F)
+mcf7_egf_dge <- read.csv("../output/dge_mcf7_egf.csv", stringsAsFactors = F)
+mcf7_tnf_dge <- read.csv("../output/dge_mcf7_tnf.csv", stringsAsFactors = F)
+
+ovca420_tgfb1_dge <- read.csv("../output/dge_ovca420_tgfb1.csv", stringsAsFactors = F)
+ovca420_egf_dge <- read.csv("../output/dge_ovca420_egf.csv", stringsAsFactors = F)
+ovca420_tnf_dge <- read.csv("../output/dge_ovca420_tnf.csv", stringsAsFactors = F)
+```
+
+Get lists of significant genes
+```{r}
+a549_tgfb1_sig <- filter(a549_tgfb1_dge, qval <= 0.05)
+a549_egf_sig <- filter(a549_egf_dge, qval <= 0.05)
+a549_tnf_sig <- filter(a549_tnf_dge, qval <= 0.05)
+
+du145_tgfb1_sig <- filter(du145_tgfb1_dge, qval <= 0.05)
+du145_egf_sig <- filter(du145_egf_dge, qval <= 0.05)
+du145_tnf_sig <- filter(du145_tnf_dge, qval <= 0.05)
+
+ovca420_tgfb1_sig <- filter(ovca420_tgfb1_dge, qval <= 0.05)
+ovca420_egf_sig <- filter(ovca420_egf_dge, qval <= 0.05)
+ovca420_tnf_sig <- filter(ovca420_tnf_dge, qval <= 0.05)
+
+mcf7_tgfb1_sig <- filter(mcf7_tgfb1_dge, qval <= 0.05)
+mcf7_egf_sig <- filter(mcf7_egf_dge, qval <= 0.05)
+mcf7_tnf_sig <- filter(mcf7_tnf_dge, qval <= 0.05)
+```
+
+# Upset plot
+```{r}
+gene_list <- data.frame(Gene = unique(c(a549_tgfb1_sig$Gene, a549_tnf_sig$Gene,
+                                       a549_egf_sig$Gene, du145_tgfb1_sig$Gene,
+                                       du145_tnf_sig$Gene, du145_egf_sig$Gene,
+                                       mcf7_tgfb1_sig$Gene, mcf7_tnf_sig$Gene,
+                                       mcf7_egf_sig$Gene, ovca420_tgfb1_sig$Gene,
+                                       ovca420_tnf_sig$Gene, ovca420_egf_sig$Gene)))
+  
+gene_list$A549_EGF <- gene_list$Gene %in% a549_egf_sig$Gene
+gene_list$A549_TGFB1 <- gene_list$Gene %in% a549_tgfb1_sig$Gene
+gene_list$A549_TNF <- gene_list$Gene %in% a549_tnf_sig$Gene
+
+gene_list$DU145_EGF <- gene_list$Gene %in% du145_egf_sig$Gene
+gene_list$DU145_TGFB1 <- gene_list$Gene %in% du145_tgfb1_sig$Gene
+gene_list$DU145_TNF <- gene_list$Gene %in% du145_tnf_sig$Gene
+
+gene_list$MCF7_EGF <- gene_list$Gene %in% mcf7_egf_sig$Gene
+gene_list$MCF7_TGFB1 <- gene_list$Gene %in% mcf7_tgfb1_sig$Gene
+gene_list$MCF7_TNF <- gene_list$Gene %in% mcf7_tnf_sig$Gene
+
+gene_list$OVCA420_EGF <- gene_list$Gene %in% ovca420_egf_sig$Gene
+gene_list$OVCA420_TGFB1 <- gene_list$Gene %in% ovca420_tgfb1_sig$Gene
+gene_list$OVCA420_TNF <- gene_list$Gene %in% ovca420_tnf_sig$Gene
+
+#Convert TRUE/FALSE to 1/0
+gene_list[,2:ncol(gene_list)] <- lapply(gene_list[,2:ncol(gene_list)], as.numeric)
+
+#Remove cell cycle genes because they are variable across all conditions
+gene_list <- gene_list[-which(gene_list$Gene %in% cc.genes),]
+```
+
+If we want to just look at intersections of unique, inducer-specific, cell line-specifc, and common, we'll use a custom intersection list in the upset plot
+
+```{r}
+#intersection_list <- list(list("A549_TGFB1"), list("A549_EGF"), list("A549_TNF"),
+#                          list("DU145_TGFB1"), list("DU145_EGF"), list("DU145_TNF"),
+#                          list("MCF7_TGFB1"), list("MCF7_EGF"), list("MCF7_TNF"),
+#                          list("OVCA420_TGFB1"), list("OVCA420_EGF"), list("OVCA420_TNF"),
+#                          list("A549_TGFB1", "A549_EGF", "A549_TNF"),
+#                          list("DU145_TGFB1", "DU145_EGF", "DU145_TNF"),
+#                          list("MCF7_TGFB1", "MCF7_EGF", "MCF7_TNF"),
+#                          list("OVCA420_TGFB1", "OVCA420_EGF", "OVCA420_TNF"),
+#                          list("A549_TGFB1", "DU145_TGFB1", "MCF7_TGFB1", "OVCA420_TGFB1"),
+#                          list("A549_EGF", "DU145_EGF", "MCF7_EGF", "OVCA420_EGF"),
+#                          list("A549_TNF", "DU145_TNF", "MCF7_TNF", "OVCA420_TNF"),
+#                          list("A549_TGFB1", "A549_EGF", "A549_TNF",
+#                               "DU145_TGFB1", "DU145_EGF", "DU145_TNF",
+#                               "MCF7_TGFB1", "MCF7_EGF", "MCF7_TNF",
+#                               "OVCA420_TGFB1", "OVCA420_EGF", "OVCA420_TNF"))
+```
+
+
+```{r}
+#Text scale order: c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars)
+pdf("../figs/upset_dge_intersection.pdf", width=10, height=6, useDingbats=F)
+upset(gene_list, nsets=12, nintersects = 25, keep.order=T,
+      sets=c("A549_TGFB1", "A549_EGF", "A549_TNF",
+             "DU145_TGFB1", "DU145_EGF", "DU145_TNF",
+             "MCF7_TGFB1", "MCF7_EGF", "MCF7_TNF",
+             "OVCA420_TGFB1", "OVCA420_EGF", "OVCA420_TNF"),
+      #intersections=intersection_list,
+      order.by = "freq", point.size=2.5,
+      mainbar.y.label = "Intersection Size",
+      sets.x.label = "Differentially Expressed\nGene Count",
+      text.scale=c(1.25, 1.25, 1.25,1.25, 1.5, 1.25),
+      mb.ratio=c(0.5,0.5))
+dev.off()
+```
+
+```{r}
+gene_list[which(rowSums(gene_list[,2:ncol(gene_list)]) == 12),] #Which genes are significant in all datasets
+#gene_list[which(rowSums(gene_list[,2:ncol(gene_list)]) > 9),] #Which genes are significant in at least 9 datasets
+```
+
+# Plot how many samples each gene shows up in
+```{r}
+summary_table <- data.frame(Gene = gene_list$Gene,
+                            SampleCount = rowSums(gene_list[,2:ncol(gene_list)]))
+summary_table <- arrange(summary_table, desc(SampleCount))
+summary_table$Index <- 1:nrow(summary_table)
+summary_table$SampleCount <- factor(summary_table$SampleCount)
+```
+
+```{r}
+summary_plot <- ggplot(summary_table, aes(x=Index, y=SampleCount)) +
+  geom_point() +
+  xlab("Gene Index") + ylab("Significance Counts") +
+  scale_x_continuous(expand=c(0.01,0)) +
+  theme_classic() +
+  theme(axis.text=element_text(size=12, color="black"),
+        axis.title=element_text(size=14))
+ggsave(summary_plot, file="../figs/dge_significance_counts.png",
+       width=6, height=3.5)
+summary_plot
+```
+
+# fGSEA on DGEs
+```{r}
+library(fgsea)
+hallmarks <- fgsea::gmtPathways("~/Data/GeneLists/hallmark.genesets.v6.1.symbols.gmt")
+```
+
+```{r}
+rename_pathways <- function(x){
+  s = unlist(strsplit(x, split="_", fixed=T))[-1] #gets rid of first part of name and underscores
+  s = Hmisc::capitalize(tolower(s)) #capitalizes first letter of each word, rest are lower case
+  s = paste(s, collapse=" ") #bring words together with space between
+  return(s)
+}
+
+names(hallmarks) <- unlist(lapply(names(hallmarks), rename_pathways))
+```
+
+## Function for fGSEA
+Only going to stash the EMT hallmark geneset for now
+```{r}
+runGSEA <- function(dge_table){
+  dge <- dge_table$qval
+  names(dge) <- dge_table$Gene
+  dge <- dge[order(dge)]
+  dge <- na.omit(dge)
+  dge[dge==0] <- 1e-316
+  dge <- -log10(dge)
+  fgsea_hallmarks <- fgsea(pathways = hallmarks["Epithelial Mesenchymal Transition"],
+                         stats = dge,
+                         minSize=15,
+                         maxSize=500,
+                         nproc=2,
+                         nperm=100000)
+}
+```
+
+```{r}
+a549_tgfb1_gsea <- runGSEA(a549_tgfb1_dge)
+a549_egf_gsea <- runGSEA(a549_egf_dge)
+a549_tnf_gsea <- runGSEA(a549_tnf_dge)
+
+du145_tgfb1_gsea <- runGSEA(du145_tgfb1_dge)
+du145_egf_gsea <- runGSEA(du145_egf_dge)
+du145_tnf_gsea <- runGSEA(du145_tnf_dge)
+
+mcf7_tgfb1_gsea <- runGSEA(mcf7_tgfb1_dge)
+mcf7_egf_gsea <- runGSEA(mcf7_egf_dge)
+mcf7_tnf_gsea <- runGSEA(mcf7_tnf_dge)
+
+ovca420_tgfb1_gsea <- runGSEA(ovca420_tgfb1_dge)
+ovca420_egf_gsea <- runGSEA(ovca420_egf_dge)
+ovca420_tnf_gsea <- runGSEA(ovca420_tnf_dge)
+```
+
+```{r}
+plotEMT <- function(dge_table, file_dir){
+  dge <- dge_table$qval
+  names(dge) <- dge_table$Gene
+  dge <- dge[order(dge)]
+  dge <- na.omit(dge)
+  dge[dge==0] <- 1e-316
+  dge <- -log10(dge)
+  significant_index <- sum(dge > -log10(0.05))
+  gsea_plot <- fgsea::plotEnrichment(hallmarks[["Epithelial Mesenchymal Transition"]], dge) +
+    geom_vline(xintercept = significant_index, linetype=2) +
+    #labs(title="Epithelial Mesenchymal Transition") + 
+    ylab("NES") + xlab("Gene Dispersion Rank") +
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=14))
+  gsea_plot
+  ggsave(gsea_plot, file=paste0("../figs/",file_dir,"/", file_dir, "_EMT_GSEA_DGE.png"),
+         width=5, height=1.5, dpi=600)
+}
+```
+
+```{r}
+plotEMT(a549_tgfb1_dge, "A549_TGFB1")
+plotEMT(a549_egf_dge, "A549_EGF")
+plotEMT(a549_tnf_dge, "A549_TNF")
+
+plotEMT(du145_tgfb1_dge, "DU145_TGFB1")
+plotEMT(du145_egf_dge, "DU145_EGF")
+plotEMT(du145_tnf_dge, "DU145_TNF")
+
+plotEMT(mcf7_tgfb1_dge, "MCF7_TGFB1")
+plotEMT(mcf7_egf_dge, "MCF7_EGF")
+plotEMT(mcf7_tnf_dge, "MCF7_TNF")
+
+plotEMT(ovca420_tgfb1_dge, "OVCA420_TGFB1")
+plotEMT(ovca420_egf_dge, "OVCA420_EGF")
+plotEMT(ovca420_tnf_dge, "OVCA420_TNF")
+```
+
+# Heatmap of sample means
+```{r}
+plotHeatmap <- function(seurat_object, sig_data, file_name){
+  sig_genes <- sig_data$Gene
+  exp_sig <- as.matrix(seurat_object[["RNA"]]@data[sig_genes,])
+  
+  exp_summary <- data.frame(Avg_0d = rowMeans(exp_sig[,seurat_object$Time=="0d"]),
+                            Avg_8h = rowMeans(exp_sig[,seurat_object$Time=="8h"]),
+                            Avg_1d = rowMeans(exp_sig[,seurat_object$Time=="1d"]),
+                            Avg_3d = rowMeans(exp_sig[,seurat_object$Time=="3d"]),
+                            Avg_7d = rowMeans(exp_sig[,seurat_object$Time=="7d"]))
+  
+  exp_sig <- as.matrix(exp_summary)
+  exp_sig <- t(scale(t(exp_sig), scale=T, center=T))
+  exp_sig[exp_sig>2] <- 2
+  exp_sig[exp_sig<(-2)] <- (-2)
+  
+  heatmap <- pheatmap(exp_sig,
+                    color = viridis::magma(100),
+                    cluster_rows=T,
+                    cluster_cols=F,
+                    clustering_method="ward.D2",
+                    show_colnames=T,
+                    show_rownames=F,
+                    filename=paste0("../figs/", file_name, "/", file_name, "_dge_heatmap.png"), height=8, width=3)
+}
+```
+
+```{r}
+plotHeatmap(a549_tgfb1, a549_tgfb1_sig, "A549_TGFB1")
+plotHeatmap(a549_egf, a549_egf_sig, "A549_EGF")
+plotHeatmap(a549_tnf, a549_tnf_sig, "A549_TNF")
+
+plotHeatmap(du145_tgfb1, du145_tgfb1_sig, "DU145_TGFB1")
+plotHeatmap(du145_egf, du145_egf_sig, "DU145_EGF")
+plotHeatmap(du145_tnf, du145_tnf_sig, "DU145_TNF")
+
+plotHeatmap(mcf7_tgfb1, mcf7_tgfb1_sig, "MCF7_TGFB1")
+plotHeatmap(mcf7_egf, mcf7_egf_sig, "MCF7_EGF")
+plotHeatmap(mcf7_tnf, mcf7_tnf_sig, "MCF7_TNF")
+
+plotHeatmap(ovca420_tgfb1, ovca420_tgfb1_sig, "OVCA420_TGFB1")
+plotHeatmap(ovca420_egf, ovca420_egf_sig, "OVCA420_EGF")
+plotHeatmap(ovca420_tnf, ovca420_tnf_sig, "OVCA420_TNF")
+```
+
+
+```{r}
+library(pheatmap)
+sig_genes <- names(gam)[which(gam <= 0.05)]
+exp_sig <- exp[sig_genes,]
+
+exp_summary <- data.frame(TGFB1_0d = rowMeans(exp_sig[,subset_seurat$Time=="0d"]),
+                          TGFB1_8h = rowMeans(exp_sig[,subset_seurat$Time=="8h"]),
+                          TGFB1_1d = rowMeans(exp_sig[,subset_seurat$Time=="1d"]),
+                          TGFB1_3d = rowMeans(exp_sig[,subset_seurat$Time=="3d"]),
+                          TGFB1_7d = rowMeans(exp_sig[,subset_seurat$Time=="7d"]))
+
+exp_sig <- as.matrix(exp_summary)
+exp_sig <- t(scale(t(exp_sig), scale=T, center=T))
+exp_sig[exp_sig>1.5] <- 1.5
+exp_sig[exp_sig<(-1.5)] <- (-1.5)
+
+heatmap <- pheatmap(exp_sig,
+                    color = viridis::magma(100),
+                    cluster_rows=T,
+                    cluster_cols=F,
+                    clustering_method="ward.D2",
+                    show_colnames=T,
+                    show_rownames=T,
+                    filename="~/Downloads/test.heatmap.png", height=18, width=4.5)
+```
+
+# Histogram of the number of differentially expressed genes per sample
+```{r}
+dge_counts <- data.frame(CellLine = rep(c("A549", "DU145", "MCF7", "OVCA420"), each=3),
+                         Treatment = rep(c("TGFB1", "EGF", "TNF"), 4),
+                         DGE_Counts = c(nrow(filter(a549_tgfb1_dge, qval <= 0.05)),
+                                        nrow(filter(a549_egf_dge, qval <= 0.05)),
+                                        nrow(filter(a549_tnf_dge, qval <= 0.05)),
+                                        nrow(filter(du145_tgfb1_dge, qval <= 0.05)),
+                                        nrow(filter(du145_egf_dge, qval <= 0.05)),
+                                        nrow(filter(du145_tnf_dge, qval <= 0.05)),
+                                        nrow(filter(mcf7_tgfb1_dge, qval <= 0.05)),
+                                        nrow(filter(mcf7_egf_dge, qval <= 0.05)),
+                                        nrow(filter(mcf7_tnf_dge, qval <= 0.05)),
+                                        nrow(filter(ovca420_tgfb1_dge, qval <= 0.05)),
+                                        nrow(filter(ovca420_egf_dge, qval <= 0.05)),
+                                        nrow(filter(ovca420_tnf_dge, qval <= 0.05))))
+time_course_samples <- c("0d", "8h", "1d", "3d", "7d")
+dge_counts$Cell_Counts = c(nrow(filter(a549_tgfb1@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(a549_egf@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(a549_tnf@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(du145_tgfb1@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(du145_egf@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(du145_tnf@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(mcf7_tgfb1@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(mcf7_egf@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(mcf7_tnf@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(ovca420_tgfb1@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(ovca420_egf@meta.data, Time %in% time_course_samples)),
+                           nrow(filter(ovca420_tnf@meta.data, Time %in% time_course_samples)))
+
+dge_counts$Treatment <- factor(dge_counts$Treatment, levels=c("TGFB1", "EGF", "TNF"))
+```
+
+```{r}
+dge_count_plot <- ggplot(dge_counts, aes(x=CellLine, y=DGE_Counts)) +
+  geom_bar(stat='identity', position='dodge', color='black', width=0.75,
+           aes(fill=Treatment)) +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_manual(values=RColorBrewer::brewer.pal(3, "Dark2")) +
+  ylab("Number of differentially\nexpressed genes") +
+  theme_classic() +
+  theme(axis.text.x=element_text(angle=45, hjust=1, color="black"),
+        axis.title.x=element_blank())
+ggsave(dge_count_plot, file="../figs/dge_count_summary.png",
+       width=6, height=3.5)
+dge_count_plot
+```
+
+# Heatmap of EMT gene signature
+Just to show binarized heatmap of whether it is significant or not
+
+```{r}
+gene_list_emt <- filter(gene_list, Gene %in% hallmarks[["Epithelial Mesenchymal Transition"]])
+```
+
+```{r}
+emt_matrix <- as.matrix(gene_list_emt[,2:ncol(gene_list_emt)])
+rownames(emt_matrix) <- gene_list_emt$Gene
+emt_heatmap <- pheatmap(t(emt_matrix),
+                        color=c('lightgrey', 'red'),
+                        border_color = 'black',
+                        cluster_rows=T,
+                        cluster_cols=T,
+                        show_rownames=T,
+                        show_colnames=T,
+                        clustering_method="ward.D2",
+                        file="../figs/dge_emt_binary_sig_heatmap.png",
+                        width=26, height=3.85)
+```
+
