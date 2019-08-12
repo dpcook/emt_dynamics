@@ -1,0 +1,104 @@
+---
+title: "Extended Data Fig 1."
+output: html_notebook
+---
+
+# Dependencies
+```{r}
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+```
+
+# 1a
+Manually organized the cell pictures
+
+# 1b
+## UMAP
+First coloured by singlet/doublet/negative
+
+```{r}
+seurat <- readRDS("../data/seurat_unfiltered.rds")
+plot_data <- seurat@meta.data
+plot_data$UMAP1 <- Embeddings(seurat, reduction="umap")[,1]
+plot_data$UMAP2 <- Embeddings(seurat, reduction="umap")[,2]
+plot_data$Doublet <- factor(plot_data$Doublet,
+                            levels=c("Singlet", "Doublet", "Negative"))
+plot_data$CellLine[is.na(plot_data$CellLine)] <- "NA"
+plot_data$CellLine <- factor(plot_data$CellLine, 
+                             levels=c("A549", "DU145", "MCF7", "OVCA420", "NA"))
+```
+
+```{r}
+plot_data$Cluster <- Idents(seurat)
+doublet_plot <- ggplot(plot_data, aes(x=UMAP1, y=UMAP2)) +
+  geom_point(size=0.1, shape=16, alpha=0.5, aes(color=Doublet)) +
+  theme_classic() +
+  theme_void() +
+  theme(legend.position="none")
+ggsave(doublet_plot, file="../figure_panels/ExtendedDataFig_1/UMAP_doublet.pdf",
+       width=4.75, height=3.5, useDingbats=F)
+ggsave(doublet_plot, file="../figure_panels/ExtendedDataFig_1/UMAP_doublet.png",
+       width=4.75, height=3.5, dpi=600)
+```
+
+```{r}
+doublet_plot
+```
+
+
+One coloured by cell line
+
+```{r}
+dark2 <- RColorBrewer::brewer.pal(8, "Set2")
+```
+
+
+```{r}
+cellline_plot <- ggplot(plot_data, aes(x=UMAP1, y=UMAP2)) +
+  geom_point(size=0.1, shape=16, alpha=0.5, aes(color=CellLine)) +
+  scale_color_manual(values=c(dark2[1:4], "grey40")) +
+  theme_classic() +
+  theme_void() +
+  theme(legend.position="none")
+ggsave(cellline_plot, file="../figure_panels/ExtendedDataFig_1/UMAP_CellLine.pdf",
+       width=4.75, height=3.5, useDingbats=F)
+ggsave(cellline_plot, file="../figure_panels/ExtendedDataFig_1/UMAP_CellLine.png",
+       width=4.75, height=3.5, dpi=600)
+```
+
+```{r}
+cellline_plot
+```
+
+# 1c
+## Sample distribution across replicates
+```{r}
+data <- seurat@meta.data
+data <- data %>% group_by(Sample, Mix) %>%
+  summarise(Count=n())
+data <- na.omit(data)
+data_plot <- ggplot(data, aes(x=Sample, y=Count)) +
+  geom_col(aes(fill=Mix)) +
+  geom_hline(yintercept = c(500, 1000, 1500, 2000, 2500), linetype=2) +
+  ylab("Cell Count") +
+  coord_flip() +
+  theme_classic() +
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_text(size=12),
+        axis.text.x=element_text(size=12, angle=45, hjust=1, color="black"),
+        axis.text.y=element_text(color="black"),
+        legend.position="none")
+data_plot
+```
+
+```{r}
+ggsave(data_plot, filename = "../figure_panels/ExtendedDataFig_1/Sample_Distribution.pdf",
+       width=3, height=15)
+```
+
+# Session Info
+```{r}
+sessionInfo()
+```
+

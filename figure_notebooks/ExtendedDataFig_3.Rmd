@@ -1,0 +1,273 @@
+---
+title: "Extended Data Figure 3"
+output: html_notebook
+---
+
+# Dependencies
+```{r}
+library(Seurat)
+library(pheatmap)
+library(dplyr)
+library(fgsea)
+library(Hmisc)
+```
+
+# Load the data
+```{r}
+a549_egf <- readRDS("../data/A549_EGF.rds")
+a549_tnf <- readRDS("../data/A549_TNF.rds")
+a549_tgfb1 <- readRDS("../data/A549_TGFB1.rds")
+
+du145_egf <- readRDS("../data/DU145_EGF.rds")
+du145_tnf <- readRDS("../data/DU145_TNF.rds")
+du145_tgfb1 <- readRDS("../data/DU145_TGFB1.rds")
+
+mcf7_egf <- readRDS("../data/MCF7_EGF.rds")
+mcf7_tnf <- readRDS("../data/MCF7_TNF.rds")
+mcf7_tgfb1 <- readRDS("../data/MCF7_TGFB1.rds")
+
+ovca420_egf <- readRDS("../data/OVCA420_EGF.rds")
+ovca420_tnf <- readRDS("../data/OVCA420_TNF.rds")
+ovca420_tgfb1 <- readRDS("../data/OVCA420_TGFB1.rds")
+```
+
+# Extended Data Figure 3a
+## Heatmaps
+Load smoothed expression values from GAM model
+```{r}
+a549_tgfb1_fit <- read.csv("../output/pseudotime/a549_tgfb1_fit.csv", row.names=1)
+a549_egf_fit <- read.csv("../output/pseudotime/a549_egf_fit.csv", row.names=1)
+a549_tnf_fit <- read.csv("../output/pseudotime/a549_tnf_fit.csv", row.names=1)
+
+du145_tgfb1_fit <- read.csv("../output/pseudotime/du145_tgfb1_fit.csv", row.names=1)
+du145_egf_fit <- read.csv("../output/pseudotime/du145_egf_fit.csv", row.names=1)
+du145_tnf_fit <- read.csv("../output/pseudotime/du145_tnf_fit.csv", row.names=1)
+
+mcf7_tgfb1_fit <- read.csv("../output/pseudotime/mcf7_tgfb1_fit.csv", row.names=1)
+mcf7_egf_fit <- read.csv("../output/pseudotime/mcf7_egf_fit.csv", row.names=1)
+mcf7_tnf_fit <- read.csv("../output/pseudotime/mcf7_tnf_fit.csv", row.names=1)
+
+ovca420_tgfb1_fit <- read.csv("../output/pseudotime/ovca420_tgfb1_fit.csv", row.names=1)
+ovca420_egf_fit <- read.csv("../output/pseudotime/ovca420_egf_fit.csv", row.names=1)
+ovca420_tnf_fit <- read.csv("../output/pseudotime/ovca420_tnf_fit.csv", row.names=1)
+```
+
+Load differential expression testing
+```{r}
+a549_tgfb1_gam <- read.csv("../output/pseudotime/a549_tgfb1_dge.csv", row.names = 1)
+a549_egf_gam <- read.csv("../output/pseudotime/a549_egf_dge.csv", row.names=1)
+a549_tnf_gam <- read.csv("../output/pseudotime/a549_tnf_dge.csv", row.names=1)
+
+du145_tgfb1_gam <- read.csv("../output/pseudotime/du145_tgfb1_dge.csv", row.names=1)
+du145_egf_gam <- read.csv("../output/pseudotime/du145_egf_dge.csv", row.names=1)
+du145_tnf_gam <- read.csv("../output/pseudotime/du145_tnf_dge.csv", row.names=1)
+
+mcf7_tgfb1_gam <- read.csv("../output/pseudotime/mcf7_tgfb1_dge.csv", row.names=1)
+mcf7_egf_gam <- read.csv("../output/pseudotime/mcf7_egf_dge.csv", row.names=1)
+mcf7_tnf_gam <- read.csv("../output/pseudotime/mcf7_tnf_dge.csv", row.names=1)
+
+ovca420_tgfb1_gam <- read.csv("../output/pseudotime/ovca420_tgfb1_dge.csv", row.names=1)
+ovca420_egf_gam <- read.csv("../output/pseudotime/ovca420_egf_dge.csv", row.names=1)
+ovca420_tnf_gam <- read.csv("../output/pseudotime/ovca420_tnf_dge.csv", row.names=1)
+```
+
+```{r}
+a549_tgfb1_sig <- rownames(a549_tgfb1_gam)[which(a549_tgfb1_gam$fdr <= 0.05)]
+a549_egf_sig <- rownames(a549_egf_gam)[which(a549_egf_gam$fdr <= 0.05)]
+a549_tnf_sig <- rownames(a549_tnf_gam)[which(a549_tnf_gam$fdr <= 0.05)]
+
+du145_tgfb1_sig <- rownames(du145_tgfb1_gam)[which(du145_tgfb1_gam$fdr <= 0.05)]
+du145_egf_sig <- rownames(du145_egf_gam)[which(du145_egf_gam$fdr <= 0.05)]
+du145_tnf_sig <- rownames(du145_tnf_gam)[which(du145_tnf_gam$fdr <= 0.05)]
+
+mcf7_tgfb1_sig <- rownames(mcf7_tgfb1_gam)[which(mcf7_tgfb1_gam$fdr <= 0.05)]
+mcf7_egf_sig <- rownames(mcf7_egf_gam)[which(mcf7_egf_gam$fdr <= 0.05)]
+mcf7_tnf_sig <- rownames(mcf7_tnf_gam)[which(mcf7_tnf_gam$fdr <= 0.05)]
+
+ovca420_tgfb1_sig <- rownames(ovca420_tgfb1_gam)[which(ovca420_tgfb1_gam$fdr <= 0.05)]
+ovca420_egf_sig <- rownames(ovca420_egf_gam)[which(ovca420_egf_gam$fdr <= 0.05)]
+ovca420_tnf_sig <- rownames(ovca420_tnf_gam)[which(ovca420_tnf_gam$fdr <= 0.05)]
+```
+
+Many genes are significant with very modest effect sizes. To try to make it a little more manageable, we'll filter for only genes that are also in the top 2k variable genes
+
+```{r}
+#Make a function so we can tweak the number of genes
+getVarGenes <- function(seurat_object, n){
+  var_table <- seurat_object[["RNA"]]@meta.features
+  var_genes <- rownames(var_table[order(desc(var_table$vst.variance.standardized)),])[1:n]
+}
+```
+
+```{r}
+a549_tgfb1_sig <- a549_tgfb1_sig[which(a549_tgfb1_sig %in% getVarGenes(a549_tgfb1, 2000))]
+a549_egf_sig <- a549_egf_sig[which(a549_egf_sig %in% getVarGenes(a549_egf, 2000))]
+a549_tnf_sig <- a549_tnf_sig[which(a549_tnf_sig %in% getVarGenes(a549_tnf, 2000))]
+
+a549_tgfb1_sig <- a549_tgfb1_sig[which(a549_tgfb1_sig %in% getVarGenes(a549_tgfb1, 2000))]
+a549_egf_sig <- a549_egf_sig[which(a549_egf_sig %in% getVarGenes(a549_egf, 2000))]
+a549_tnf_sig <- a549_tnf_sig[which(a549_tnf_sig %in% getVarGenes(a549_tnf, 2000))]
+
+du145_tgfb1_sig <- du145_tgfb1_sig[which(du145_tgfb1_sig %in% getVarGenes(du145_tgfb1, 2000))]
+du145_egf_sig <- du145_egf_sig[which(du145_egf_sig %in% getVarGenes(du145_egf, 2000))]
+du145_tnf_sig <- du145_tnf_sig[which(du145_tnf_sig %in% getVarGenes(du145_tnf, 2000))]
+
+mcf7_tgfb1_sig <- mcf7_tgfb1_sig[which(mcf7_tgfb1_sig %in% getVarGenes(mcf7_tgfb1, 2000))]
+mcf7_egf_sig <- mcf7_egf_sig[which(mcf7_egf_sig %in% getVarGenes(mcf7_egf, 2000))]
+mcf7_tnf_sig <- mcf7_tnf_sig[which(mcf7_tnf_sig %in% getVarGenes(mcf7_tnf, 2000))]
+
+ovca420_tgfb1_sig <- ovca420_tgfb1_sig[which(ovca420_tgfb1_sig %in% getVarGenes(ovca420_tgfb1, 2000))]
+ovca420_egf_sig <- ovca420_egf_sig[which(ovca420_egf_sig %in% getVarGenes(ovca420_egf, 2000))]
+ovca420_tnf_sig <- ovca420_tnf_sig[which(ovca420_tnf_sig %in% getVarGenes(ovca420_tnf, 2000))]
+```
+
+Make heatmap
+```{r}
+plotHeatmap <- function(smooth_fit, genes, file_dir){
+  exp <- smooth_fit[genes,]
+  exp[exp>0.5] <- 0.5
+  exp[exp<(-0.5)] <- (-0.5)
+  print("Making heatmap")
+  heatmap <- pheatmap(exp,
+                      color=viridis::magma(100),
+                      cluster_cols = F,
+                      cluster_rows = T,
+                      treeheight_row = 0,
+                      clustering_method="ward.D2",
+                      legend=F,
+                      show_rownames=F,
+                      show_colnames=F,
+                      filename=paste0("../figure_panels/ExtendedDataFig_3/", file_dir, 
+                                      "_Pseudotime_Heatmap.png"),
+                      height=6, width=3)
+}
+```
+
+```{r}
+du145_tgfb1_heatmap <- plotHeatmap(du145_tgfb1_fit, du145_tgfb1_sig, "DU145_TGFB1")
+du145_egf_heatmap <- plotHeatmap(du145_egf_fit, du145_egf_sig, "DU145_EGF")
+du145_tnf_heatmap <- plotHeatmap(du145_tnf_fit, du145_tnf_sig, "DU145_TNF")
+
+mcf7_tgfb1_heatmap <- plotHeatmap(mcf7_tgfb1_fit, mcf7_tgfb1_sig, "MCF7_TGFB1")
+mcf7_egf_heatmap <- plotHeatmap(mcf7_egf_fit, mcf7_egf_sig, "MCF7_EGF")
+mcf7_tnf_heatmap <- plotHeatmap(mcf7_tnf_fit, mcf7_tnf_sig, "MCF7_TNF")
+
+ovca420_tgfb1_heatmap <- plotHeatmap(ovca420_tgfb1_fit, ovca420_tgfb1_sig, "OVCA420_TGFB1")
+ovca420_egf_heatmap <- plotHeatmap(ovca420_egf_fit, ovca420_egf_sig, "OVCA420_EGF")
+ovca420_tnf_heatmap <- plotHeatmap(ovca420_tnf_fit, ovca420_tnf_sig, "OVCA420_TNF")
+```
+
+# Extended Data Figure 3b
+## GSEA plots of DEGs
+
+```{r}
+hallmarks <- fgsea::gmtPathways("~/Data/GeneLists/hallmark.genesets.v6.1.symbols.gmt")
+```
+
+```{r}
+rename_pathways <- function(x){
+  s = unlist(strsplit(x, split="_", fixed=T))[-1] #gets rid of first part of name and underscores
+  s = Hmisc::capitalize(tolower(s)) #capitalizes first letter of each word, rest are lower case
+  s = paste(s, collapse=" ") #bring words together with space between
+  return(s)
+}
+
+names(hallmarks) <- unlist(lapply(names(hallmarks), rename_pathways))
+```
+
+```{r}
+plotEMT <- function(sig_list, file_dir){
+  sig_list <- arrange(sig_list, desc(fdr))
+  rank <- 1:nrow(sig_list)
+  names(rank) <- sig_list$Gene
+  gsea_plot <- fgsea::plotEnrichment(hallmarks[["Epithelial Mesenchymal Transition"]], rank) +
+    #labs(title="Epithelial Mesenchymal Transition") + 
+    ylab("ES") + xlab("Gene Variance Rank") +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.line = element_line(size=0.5),
+          axis.ticks = element_blank())
+  ggsave(gsea_plot, filename = paste0("../figure_panels/ExtendedDataFig_3/", file_dir, "_DEG_GSEA.pdf"),
+         width=1.75, height=1.5)
+  gsea_plot
+}
+```
+
+```{r}
+plotEMT(a549_tgfb1_gam, "A549_TGFB1")
+plotEMT(a549_egf_gam, "A549_EGF")
+plotEMT(a549_tnf_gam, "A549_TNF")
+
+plotEMT(du145_tgfb1_gam, "DU145_TGFB1")
+plotEMT(du145_egf_gam, "DU145_EGF")
+plotEMT(du145_tnf_gam, "DU145_TNF")
+
+plotEMT(mcf7_tgfb1_gam, "MCF7_TGFB1")
+plotEMT(mcf7_egf_gam, "MCF7_EGF")
+plotEMT(mcf7_tnf_gam, "MCF7_TNF")
+
+plotEMT(ovca420_tgfb1_gam, "OVCA420_TGFB1")
+plotEMT(ovca420_egf_gam, "OVCA420_EGF")
+plotEMT(ovca420_tnf_gam, "OVCA420_TNF")
+```
+
+# Extended Data Figure 3
+## Heatmaps of EMT hallmark genes
+```{r}
+smoothValues <- function(seurat_object, genes, file_dir){
+  genes_keep <- genes[which(genes %in% rownames(seurat_object))]
+  print(paste0("Genes not found in the data: ", genes[which(genes %nin% rownames(seurat_object))]))
+  exp <- as.matrix(seurat_object[["RNA"]]@data[genes_keep,])
+  
+  fits <- apply(exp, 1, function(z){
+    pseudo_data <- data.frame(Gene=z,
+                              Pseudotime=seurat_object$Pseudotime)
+    model <- mgcv::gam(Gene ~ s(Pseudotime, k=4), data=pseudo_data,
+                       method="REML")
+    target_values <- data.frame(Pseudotime = seq(0, 1, length.out=201))
+    new_pseudo_values <- predict(model, newdata=target_values)
+  })
+  fits <- t(fits)
+}
+
+smoothHeatmap <- function(seurat_object, genes, file_dir, height){
+  print("Modelling smooth values...")
+  mat <- smoothValues(seurat_object, genes)
+  print("Scaling...")
+  mat <- t(scale(t(mat), scale=F, center=T))
+  
+  #Add value of zero for absent genes
+  #Though this only works if zero is meaningful :/ 
+  #Maybe can set it to -2?
+  #genes_absent <- genes[which(genes %nin% rownames(seurat_object))]
+  #empty_mat <- matrix(0, nrow=length(genes_absent), ncol=ncol(mat))
+  #rownames(empty_mat) <- genes_absent
+  
+  print("Making heatmap...")
+  mat[mat>0.5] <- 0.5
+  mat[mat<(-0.5)] <- (-0.5)
+  
+  #bluered <- colorRampPalette(rev(RColorBrewer::brewer.pal(n = 11, "RdBu")))(100)
+  heatmap <- pheatmap(mat,
+                      color=viridis::inferno(100),
+                      #color=bluered,
+                      cluster_cols=F,
+                      cluster_rows=T,
+                      show_colnames=F,
+                      show_rownames=T,
+                      border_color=NA,
+                      legend=F,
+                      clustering_method="ward.D2",
+                                  filename=paste0("../figure_panels/ExtendedDataFig_3/",file_dir,"_emt_hallmarks_heatmap.png"),
+                      width=6, height=19)
+}
+```
+
+```{r}
+smoothHeatmap(a549_egf, hallmarks[["Epithelial Mesenchymal Transition"]], "A549_EGF")
+smoothHeatmap(ovca420_tnf, hallmarks[["Epithelial Mesenchymal Transition"]], "OVCA420_TNF")
+```
+
+
+
+

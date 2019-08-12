@@ -1,0 +1,399 @@
+---
+title: "Figure 1"
+output: html_notebook
+---
+
+# Dependencies
+```{r}
+library(Seurat)
+library(cowplot)
+library(ggplot2)
+library(dplyr)
+library(fgsea)
+library(UpSetR)
+library(UpSetR)
+library(MASS)
+```
+
+# Load the data
+
+```{r}
+a549_egf <- readRDS("../data/A549_EGF.rds")
+a549_tnf <- readRDS("../data/A549_TNF.rds")
+a549_tgfb1 <- readRDS("../data/A549_TGFB1.rds")
+
+du145_egf <- readRDS("../data/DU145_EGF.rds")
+du145_tnf <- readRDS("../data/DU145_TNF.rds")
+du145_tgfb1 <- readRDS("../data/DU145_TGFB1.rds")
+
+mcf7_egf <- readRDS("../data/MCF7_EGF.rds")
+mcf7_tnf <- readRDS("../data/MCF7_TNF.rds")
+mcf7_tgfb1 <- readRDS("../data/MCF7_TGFB1.rds")
+
+ovca420_egf <- readRDS("../data/OVCA420_EGF.rds")
+ovca420_tnf <- readRDS("../data/OVCA420_TNF.rds")
+ovca420_tgfb1 <- readRDS("../data/OVCA420_TGFB1.rds")
+```
+
+# Fig. 1a
+## Plate schematic
+Hand-made
+
+## Barcode t-SNE
+```{r}
+barcode_tsne <- read.csv("../output/mix3a_barcode_tsne_classifications.csv",
+                         row.names = 1)
+temp_mat <- as.matrix(barcode_tsne[,3:98])
+temp_mat[temp_mat < 0] <- 0
+barcode_tsne[,3:98] <- temp_mat
+#barcode_tsne$Classification <- factor(barcode_tsne$Classification,
+ #                                     levels=c("Singlet", "Doublet", "Negative"))
+```
+
+First plot with classifications
+```{r}
+tsne_plot <- ggplot(barcode_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.3, shape=16, alpha=0.75, aes(color=Classification)) +
+  theme_void() +
+  theme(legend.position="none")
+ggsave(tsne_plot, file="../figure_panels/figure_1/Mix3a_BarcodeTSNE_Classification.pdf",
+       width=3, height=2.4, useDingbats=F)
+ggsave(tsne_plot, file="../figure_panels/figure_1/Mix3a_BarcodeTSNE_Classification.png",
+       width=3, height=2.4, dpi=600)
+tsne_plot
+```
+
+And plot barcode signal
+```{r}
+tsne_plot <- ggplot(barcode_tsne, aes(x=TSNE1, y=TSNE2)) +
+  geom_point(size=0.3, shape=16, alpha=0.75, aes(color=Bar26)) +
+  scale_color_gradient(low="lightgrey",high="red") +
+  theme_void() +
+  theme(legend.text=element_blank(),
+        legend.title=element_blank(),
+        legend.key.size = unit(4, "mm"))
+ggsave(tsne_plot, file="../figure_panels/figure_1/Mix3a_BarcodeTSNE_Bar26.pdf",
+       width=3, height=2.4, useDingbats=F)
+ggsave(tsne_plot, file="../figure_panels/figure_1/Mix3a_BarcodeTSNE_Bar26.png",
+       width=3, height=2.4, dpi=600)
+tsne_plot
+```
+
+# Fig. 1b
+## UMAP
+```{r}
+seurat <- readRDS("../data/seurat_unfiltered.rds")
+plot_data <- seurat@meta.data
+plot_data$UMAP1 <- Embeddings(seurat, reduction="umap")[,1]
+plot_data$UMAP2 <- Embeddings(seurat, reduction="umap")[,2]
+plot_data$Doublet <- factor(plot_data$Doublet,
+                            levels=c("Singlet", "Doublet", "Negative"))
+plot_data$CellLine[is.na(plot_data$CellLine)] <- "NA"
+plot_data$CellLine <- factor(plot_data$CellLine, 
+                             levels=c("A549", "DU145", "MCF7", "OVCA420", "NA"))
+```
+
+```{r}
+plot_data$Cluster <- Idents(seurat)
+bulk_sample_plot <- ggplot(plot_data, aes(x=UMAP1, y=UMAP2)) +
+  geom_point(size=0.1, shape=16, alpha=0.5, aes(color=Cluster)) +
+  theme_classic() +
+  theme_void() +
+  theme(legend.position="none")
+ggsave(bulk_sample_plot, file="../figure_panels/figure_1/UMAP_clustered.pdf",
+       width=4.75, height=3.5, useDingbats=F)
+ggsave(bulk_sample_plot, file="../figure_panels/figure_1/UMAP_clustered.png",
+       width=4.75, height=3.5, dpi=600)
+bulk_sample_plot
+```
+
+## Bar chat
+```{r}
+clusters_freq <- plot_data %>%
+  group_by(CellLine, Cluster) %>%
+  summarise(n=n()) %>%
+  mutate(relative_freq = n/sum(n))
+clusters_freq$Cluster <- factor(clusters_freq$Cluster)
+clusters_freq <- dplyr::filter(clusters_freq, CellLine != "NA")
+clusters_freq$CellLine <- factor(clusters_freq$CellLine,
+                                 levels=c("A549", "DU145", "MCF7", "OVCA420"))
+
+freq_plot <- ggplot(clusters_freq, aes(x=CellLine, y=relative_freq)) +
+  geom_col(aes(fill=Cluster), position="stack") +
+  scale_y_continuous(limits=c(0,1), expand=c(0,0)) +
+  ylab("Relative Frequency") +
+  theme_classic() +
+  coord_flip() +
+  theme(strip.background=element_blank(),
+        axis.line.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=5, colour="black"),
+        axis.text = element_text(size=4, colour="black"),
+        axis.line = element_line(size=0.1),
+        axis.ticks = element_line(size=0.1),
+        legend.position="none")
+ggsave(freq_plot, file="../figure_panels/figure_1/Cluster_relative_frequency.pdf",
+       width=4.75, height=1.75, units="cm")
+ggsave(freq_plot, file="../figure_panels/figure_1/Cluster_relative_frequency.png",
+       width=4.75, height=1.75, units="cm", dpi=600)
+freq_plot
+```
+
+
+# Fig. 1c
+## Bar chart
+```{r}
+PRGn <- rev(RColorBrewer::brewer.pal(11, "PRGn"))
+color_ramp <- c(PRGn[1], PRGn[2], PRGn[3], PRGn[5], PRGn[6], PRGn[7], PRGn[8], PRGn[9])
+```
+
+
+```{r}
+seurat <- readRDS("../data/seurat_unfiltered.rds")
+data <- seurat@meta.data
+data <- group_by(data, CellLine, Treatment, Time) %>%
+  summarise(Count=n())
+data <- na.omit(data)
+data$Treatment <- factor(data$Treatment, levels=c("TGFB1", "EGF", "TNF"))
+data$Time <- factor(data$Time, levels=rev(c("0d", "8h", "1d", "3d", "7d",
+                                        "8h_rm", "1d_rm", "3d_rm")))
+
+data_plot <- ggplot(data, aes(x=Treatment, y=Count)) +
+  geom_col(color="black", aes(fill=Time), size=0.15) +
+  facet_wrap(~CellLine, scales="free") +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_manual(values=rev(color_ramp)) +
+  ylab("Cell Count") + xlab("") +
+  theme_classic() +
+  coord_flip() +
+  theme(strip.background=element_blank(),
+        strip.text=element_text(size=5),
+        axis.line.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=5, colour="black"),
+        axis.text = element_text(size=4, colour="black"),
+        axis.line = element_line(size=0.1),
+        axis.ticks = element_line(size=0.1),
+        legend.position="none")
+ggsave(data_plot, filename = "../figure_panels/figure_1/Timecourse_CellCounts.png",
+       width=5.1, height=4.15, dpi=600, units="cm")
+ggsave(data_plot, filename = "../figure_panels/figure_1/Timecourse_CellCounts.pdf",
+       width=5.1, height=4.15, dpi=600, units="cm")
+```
+
+# Fig. 1d
+## UMAP
+```{r}
+getMaxima <- function(seurat_object){
+  samples <- unique(as.character(seurat_object$Sample))
+  data <- seurat_object@meta.data
+  data$UMAP1 <- Embeddings(seurat_object, 'umap_pseudo')[,1]
+  data$UMAP2 <- Embeddings(seurat_object, 'umap_pseudo')[,2]
+  kernel_df <- list()
+  for (i in 1:length(samples)){
+    kernel <- kde2d(filter(data, Sample==samples[i])$UMAP1,
+                filter(data, Sample==samples[i])$UMAP2,
+                n=200)
+    #Next bit is ugly but works
+    test_mat <- matrix(kernel$z, length(kernel$x), length(kernel$y),
+                       byrow=T)
+    test_mat <- test_mat[nrow(test_mat):1,] #converts it to the proper matrix orientation
+    kernel_df[[samples[i]]] <- data.frame(Sample = samples[i],
+                                          UMAP1 = kernel$x[which(test_mat == max(test_mat), 
+                                                                 arr.ind = TRUE)[2]],
+                                          UMAP2 = rev(kernel$y)[which(test_mat == max(test_mat), 
+                                                                      arr.ind = TRUE)[1]])
+  }
+  kernel_df <- do.call(rbind, kernel_df)
+  return(kernel_df)
+}
+
+
+PRGn <- rev(RColorBrewer::brewer.pal(11, "PRGn"))
+color_ramp <- c(PRGn[1], PRGn[2], PRGn[3], PRGn[5], PRGn[6], PRGn[7], PRGn[8], PRGn[9])
+
+plotMaxima <- function(seurat_object){
+  kernel_df <- getMaxima(seurat_object) #can remove this is you want to store DF separately
+  kernel_df$Sample <- factor(kernel_df$Sample, levels=levels(seurat_object$Sample))
+  data <- seurat_object@meta.data
+  data$UMAP1 <- Embeddings(seurat_object, 'umap_pseudo')[,1]
+  data$UMAP2 <- Embeddings(seurat_object, 'umap_pseudo')[,2]
+  data_plot <- ggplot(data, aes(x=UMAP1, y=UMAP2)) +
+    geom_point(size=0.1, alpha=0.75, color='lightgrey') +
+    stat_density_2d(aes(alpha=(..level..)^1.25, fill=Sample),
+                    geom="polygon",
+                    show.legend=F) +
+    geom_point(data=kernel_df, size=4, color="black") +
+    geom_point(data=kernel_df, size=3, aes(color=Sample)) +
+    scale_color_manual(values=color_ramp, labels=c("0d", "8h", "1d", "3d", "7d",
+                                                   "7d + 8h off", "7d + 1d off",
+                                                   "7d + 3d off")) +
+    scale_fill_manual(values=color_ramp) +
+    scale_alpha_continuous(range=c(0,0.25)) +
+    theme_void() +
+    theme(legend.position="none")
+}
+```
+
+```{r}
+p1 <- plotMaxima(a549_tgfb1)
+p2 <- plotMaxima(a549_egf)
+p3 <- plotMaxima(a549_tnf)
+p4 <- plotMaxima(du145_tgfb1)
+p5 <- plotMaxima(du145_egf)
+p6 <- plotMaxima(du145_tnf)
+p7 <- plotMaxima(mcf7_tgfb1)
+p8 <- plotMaxima(mcf7_egf)
+p9 <- plotMaxima(mcf7_tnf)
+p10 <- plotMaxima(ovca420_tgfb1)
+p11 <- plotMaxima(ovca420_egf)
+p12 <- plotMaxima(ovca420_tnf)
+
+grid_plot <- plot_grid(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12,
+                       ncol=3)
+save_plot(grid_plot, filename = "../figure_panels/figure_1/UMAP_AllSamples_KDE_Withoutlegend.png",
+          dpi=300, base_width=7.75, base_height=4.8)
+
+grid_plot
+```
+
+
+# Fig. 1e
+## UpSet plot
+Goal: Take intersections top 1k variable genes (omitting cell cycle genes to avoid CC patterns)
+```{r}
+getHVG_data <- function(seurat_object, top_n){
+  gene_list <- seurat_object[["RNA"]]@meta.features
+  gene_list$Gene <- rownames(gene_list)
+  gene_list <- arrange(gene_list, desc(vst.variance.standardized))[1:top_n,]
+}
+```
+
+```{r}
+gene_count <- 1000
+hvg_a549_tgfb1 <- getHVG_data(a549_tgfb1, gene_count)
+hvg_a549_tnf <- getHVG_data(a549_tnf, gene_count)
+hvg_a549_egf <- getHVG_data(a549_egf, gene_count)
+
+hvg_du145_tgfb1 <- getHVG_data(du145_tgfb1, gene_count)
+hvg_du145_tnf <- getHVG_data(du145_tnf, gene_count)
+hvg_du145_egf <- getHVG_data(du145_egf, gene_count)
+
+hvg_mcf7_tgfb1 <- getHVG_data(mcf7_tgfb1, gene_count)
+hvg_mcf7_tnf <- getHVG_data(mcf7_tnf, gene_count)
+hvg_mcf7_egf <- getHVG_data(mcf7_egf, gene_count)
+
+hvg_ovca420_tgfb1 <- getHVG_data(ovca420_tgfb1, gene_count)
+hvg_ovca420_tnf <- getHVG_data(ovca420_tnf, gene_count)
+hvg_ovca420_egf <- getHVG_data(ovca420_egf, gene_count)
+```
+
+```{r}
+hvg_list <- data.frame(Gene = unique(c(hvg_a549_tgfb1$Gene, hvg_a549_tnf$Gene,
+                                       hvg_a549_egf$Gene, hvg_du145_tgfb1$Gene,
+                                       hvg_du145_tnf$Gene, hvg_du145_egf$Gene,
+                                       hvg_mcf7_tgfb1$Gene, hvg_mcf7_tnf$Gene,
+                                       hvg_mcf7_egf$Gene, hvg_ovca420_tgfb1$Gene,
+                                       hvg_ovca420_tnf$Gene, hvg_ovca420_egf$Gene)))
+  
+hvg_list$A549_EGF <- hvg_list$Gene %in% hvg_a549_egf$Gene
+hvg_list$A549_TGFB1 <- hvg_list$Gene %in% hvg_a549_tgfb1$Gene
+hvg_list$A549_TNF <- hvg_list$Gene %in% hvg_a549_tnf$Gene
+
+hvg_list$DU145_EGF <- hvg_list$Gene %in% hvg_du145_egf$Gene
+hvg_list$DU145_TGFB1 <- hvg_list$Gene %in% hvg_du145_tgfb1$Gene
+hvg_list$DU145_TNF <- hvg_list$Gene %in% hvg_du145_tnf$Gene
+
+hvg_list$MCF7_EGF <- hvg_list$Gene %in% hvg_mcf7_egf$Gene
+hvg_list$MCF7_TGFB1 <- hvg_list$Gene %in% hvg_mcf7_tgfb1$Gene
+hvg_list$MCF7_TNF <- hvg_list$Gene %in% hvg_mcf7_tnf$Gene
+
+hvg_list$OVCA420_EGF <- hvg_list$Gene %in% hvg_ovca420_egf$Gene
+hvg_list$OVCA420_TGFB1 <- hvg_list$Gene %in% hvg_ovca420_tgfb1$Gene
+hvg_list$OVCA420_TNF <- hvg_list$Gene %in% hvg_ovca420_tnf$Gene
+
+#Convert TRUE/FALSE to 1/0
+hvg_list[,2:ncol(hvg_list)] <- lapply(hvg_list[,2:ncol(hvg_list)], as.numeric)
+
+#Remove cell cycle genes because they are variable across all conditions
+hvg_list <- hvg_list[-which(hvg_list$Gene %in% c(cc.genes[[1]], cc.genes[[2]])),]
+```
+
+```{r}
+#Text scale order: c(intersection size title, intersection size tick labels, set size title, set size tick labels, set names, numbers above bars)
+pdf("../figure_panels/figure_1/upset_hvg_intersection_1000.pdf", width=5.5, height=4.8, useDingbats=F)
+upset(hvg_list, nsets=12, nintersects=15, keep.order=T,
+      sets=c("OVCA420_TNF", "OVCA420_EGF", "OVCA420_TGFB1",
+             "MCF7_TNF", "MCF7_EGF", "MCF7_TGFB1",
+             "DU145_TNF", "DU145_EGF", "DU145_TGFB1",
+             "A549_TNF", "A549_EGF", "A549_TGFB1"),
+      order.by = "freq", point.size=2.5,
+      mainbar.y.label = "Variable Gene\nIntersection Size",
+      sets.x.label = "Variable Gene Count",
+      text.scale=c(1.25, 1.25, 1.25,1.25, 1.5, 1.25),
+      mb.ratio=c(0.5,0.5))
+dev.off()
+```
+
+# Fig. 1f
+## GSEA plots
+```{r}
+hallmarks <- fgsea::gmtPathways("~/Data/GeneLists/hallmark.genesets.v6.1.symbols.gmt")
+```
+
+```{r}
+rename_pathways <- function(x){
+  s = unlist(strsplit(x, split="_", fixed=T))[-1] #gets rid of first part of name and underscores
+  s = Hmisc::capitalize(tolower(s)) #capitalizes first letter of each word, rest are lower case
+  s = paste(s, collapse=" ") #bring words together with space between
+  return(s)
+}
+
+names(hallmarks) <- unlist(lapply(names(hallmarks), rename_pathways))
+```
+
+```{r}
+plotEMT <- function(seurat_object, file_dir){
+  disp_table <- seurat_object[["RNA"]]@meta.features
+  disp_table$Gene <- rownames(disp_table)
+  disp_table <- arrange(disp_table, desc(vst.variance.standardized))
+  disp <- disp_table$vst.variance.standardized
+  names(disp) <- disp_table$Gene
+  gsea_plot <- fgsea::plotEnrichment(hallmarks[["Epithelial Mesenchymal Transition"]], disp) +
+    #labs(title="Epithelial Mesenchymal Transition") + 
+    ylab("ES") + xlab("Gene Variance Rank") +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.line = element_line(size=0.5),
+          axis.ticks = element_blank())
+  ggsave(gsea_plot, filename = paste0("../figure_panels/figure_1/", file_dir, "_EMT_GSEA.pdf"),
+         width=1.75, height=1.5)
+  gsea_plot
+}
+```
+
+```{r}
+plotEMT(a549_tgfb1, "A549_TGFB1")
+plotEMT(a549_egf, "A549_EGF")
+plotEMT(a549_tnf, "A549_TNF")
+
+plotEMT(du145_tgfb1, "DU145_TGFB1")
+plotEMT(du145_egf, "DU145_EGF")
+plotEMT(du145_tnf, "DU145_TNF")
+
+plotEMT(mcf7_tgfb1, "MCF7_TGFB1")
+plotEMT(mcf7_egf, "MCF7_EGF")
+plotEMT(mcf7_tnf, "MCF7_TNF")
+
+plotEMT(ovca420_tgfb1, "OVCA420_TGFB1")
+plotEMT(ovca420_egf, "OVCA420_EGF")
+plotEMT(ovca420_tnf, "OVCA420_TNF")
+```
+
+
+
+# Session info
+```{r}
+sessionInfo()
+```
+
