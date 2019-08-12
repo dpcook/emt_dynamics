@@ -1,4 +1,5 @@
 ### Scripts used for "Comparing transcriptional dynamics of the epithelial-mesenchymal transition"
+![Alt text](figure_1.tiff)
 
 Knitted versions of the scripts will be available within the next day or two. In the meantime, I've uploaded RMDs used for the core processing of the data into processing_notebooks/ and scripts to generate all figures panels in figure_notebooks/.
 
